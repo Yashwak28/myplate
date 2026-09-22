@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MyPlate — Your Personal Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; background: #030712; }
+
+    /* ── Progress rings ─────────────────────────────── */
+    .ring-svg   { transform: rotate(-90deg); }
+    .ring-track { fill: none; stroke: #1f2937; stroke-width: 9; }
+    .ring-fill  { fill: none; stroke-width: 9; stroke-linecap: round;
+                  transition: stroke-dashoffset .8s cubic-bezier(.4,0,.2,1); }
+
+    /* ── Flex-day blur ──────────────────────────────── */
+    .flex-blur { filter: blur(10px); user-select: none; pointer-events: none;
+                 transition: filter .4s; }
+
+    /* ── Meal card animation ────────────────────────── */
+    @keyframes slideUp {
+      from { opacity:0; transform:translateY(14px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .meal-card { animation: slideUp .3s ease forwards; }
+
+    /* ── Spinner ────────────────────────────────────── */
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .spinner { animation: spin .8s linear infinite; }
+
+    /* ── Tab underline ──────────────────────────────── */
+    .tab-btn { position:relative; }
+    .tab-btn.active::after {
+      content:''; position:absolute; bottom:-2px; left:0; right:0;
+      height:2px; background:#10b981; border-radius:9999px;
+    }
+
+    /* ── Photo dropzone ─────────────────────────────── */
+    .dropzone { border: 2px dashed #374151; transition: border-color .2s, background .2s; }
+    .dropzone.dragover { border-color:#10b981; background:rgba(16,185,129,.05); }
+
+    /* ── Wizard progress dots ───────────────────────── */
+    .dot { width:8px; height:8px; border-radius:9999px; background:#374151;
+           transition: background .3s; }
+    .dot.active { background:#10b981; }
+
+    /* ── Scrollbar ──────────────────────────────────── */
+    ::-webkit-scrollbar { width:5px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:#374151; border-radius:9999px; }
+
+    /* ── Photo thumbnail in meal card ───────────────── */
+    .meal-thumb { width:56px; height:56px; object-fit:cover;
+                  border-radius:10px; flex-shrink:0; }
+
+    /* ── Animated gradient on analyse button ────────── */
+    @keyframes gradMove {
+      0%  { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100%{ background-position: 0% 50%; }
+    }
+    .gradient-btn {
+      background: linear-gradient(135deg,#10b981,#3b82f6,#8b5cf6);
+      background-size: 300% 300%;
+      animation: gradMove 3s ease infinite;
+    }
+  </style>
+</head>
+<body class="text-gray-100 min-h-screen">
+
+<!-- ═══════════════════════════════════════════════
+     FIRST-RUN WIZARD OVERLAY
+══════════════════════════════════════════════════ -->
+<div id="wizard-overlay"
+     class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md
+            flex items-center justify-center p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-3xl shadow-2xl
+              w-full max-w-lg p-8 relative">
+
+    <!-- Progress dots -->
+    <div class="flex justify-center gap-2 mb-8">
+      <div class="dot active" id="dot-1"></div>
+      <div class="dot" id="dot-2"></div>
+      <div class="dot" id="dot-3"></div>
+      <div class="dot" id="dot-4"></div>
+    </div>
+
+    <!-- Step 1: Name + Gender + Age -->
+    <div id="wiz-step-1">
+      <h2 class="text-2xl font-bold mb-1">👋 Welcome to MyPlate!</h2>
+      <p class="text-gray-400 text-sm mb-6">Let's personalise your tracker in 4 quick steps.</p>
+      <div class="space-y-4">
+        <div>
+          <label class="text-sm text-gray-400 block mb-1">Your name</label>
+          <input id="wiz-name" type="text" placeholder="e.g. Yash"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+                        text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+        </div>
+        <div>
+          <label class="text-sm text-gray-400 block mb-1">Age</label>
+          <input id="wiz-age" type="number" min="10" max="100" placeholder="e.g. 22"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+                        text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+        </div>
+        <div>
+          <label class="text-sm text-gray-400 block mb-2">Biological sex</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="selectGender('male')" id="btn-male"
+                    class="gender-btn py-3 rounded-xl border border-gray-700 bg-gray-800
+                           hover:border-emerald-500 transition text-sm font-medium">
+                    👨 Male
+            </button>
+            <button onclick="selectGender('female')" id="btn-female"
+                    class="gender-btn py-3 rounded-xl border border-gray-700 bg-gray-800
+                           hover:border-emerald-500 transition text-sm font-medium">
+                    👩 Female
+            </button>
+          </div>
+        </div>
+      </div>
+      <button onclick="wizNext()" class="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500
+              text-white font-semibold rounded-xl transition">Continue →</button>
+    </div>
+
+    <!-- Step 2: Weight + Height -->
+    <div id="wiz-step-2" class="hidden">
+      <h2 class="text-2xl font-bold mb-1">📏 Your body stats</h2>
+      <p class="text-gray-400 text-sm mb-6">Used to calculate your daily calorie needs.</p>
+      <div class="space-y-4">
+        <div>
+          <label class="text-sm text-gray-400 block mb-1">Weight (kg)</label>
+          <input id="wiz-weight" type="number" min="30" max="300" step="0.1" placeholder="e.g. 70"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+                        text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+        </div>
+        <div>
+          <label class="text-sm text-gray-400 block mb-1">Height (cm)</label>
+          <input id="wiz-height" type="number" min="100" max="250" placeholder="e.g. 175"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+                        text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button onclick="wizPrev()" class="flex-1 py-3 bg-gray-800 hover:bg-gray-700
+                text-gray-300 font-semibold rounded-xl transition">← Back</button>
+        <button onclick="wizNext()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500
+                text-white font-semibold rounded-xl transition">Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Activity + Goal -->
+    <div id="wiz-step-3" class="hidden">
+      <h2 class="text-2xl font-bold mb-1">🏃 Your lifestyle</h2>
+      <p class="text-gray-400 text-sm mb-4">How active are you on a typical week?</p>
+      <div class="space-y-2 mb-5">
+        <select id="wiz-activity"
+                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+                       text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="sedentary">🛋️  Sedentary — desk job, little movement</option>
+          <option value="light">🚶 Lightly active — walks, 1-2x exercise/week</option>
+          <option value="moderate" selected>🏃 Moderately active — 3-4x exercise/week</option>
+          <option value="active">💪 Very active — 5-6x intense exercise/week</option>
+          <option value="very_active">🏋️ Extra active — physical job or athlete</option>
+        </select>
+      </div>
+      <p class="text-gray-400 text-sm mb-3">What's your goal?</p>
+      <div class="grid grid-cols-3 gap-2">
+        <button onclick="selectGoal('lose')" id="goal-lose"
+                class="goal-btn py-3 rounded-xl border border-gray-700 bg-gray-800
+                       hover:border-emerald-500 transition text-sm font-medium">
+          ⬇️ Lose weight
+        </button>
+        <button onclick="selectGoal('maintain')" id="goal-maintain"
+                class="goal-btn py-3 rounded-xl border border-emerald-600 bg-emerald-900/30
+                       text-sm font-medium">
+          ➡️ Maintain
+        </button>
+        <button onclick="selectGoal('gain')" id="goal-gain"
+                class="goal-btn py-3 rounded-xl border border-gray-700 bg-gray-800
+                       hover:border-emerald-500 transition text-sm font-medium">
+          ⬆️ Gain muscle
+        </button>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button onclick="wizPrev()" class="flex-1 py-3 bg-gray-800 hover:bg-gray-700
+                text-gray-300 font-semibold rounded-xl transition">← Back</button>
+        <button onclick="wizNext()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500
+                text-white font-semibold rounded-xl transition">Calculate →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Review Goals -->
+    <div id="wiz-step-4" class="hidden">
+      <h2 class="text-2xl font-bold mb-1">🎯 Your personalised goals</h2>
+      <p class="text-gray-400 text-sm mb-6">
+        Based on your stats. You can always adjust these later.
+      </p>
+      <div class="grid grid-cols-2 gap-3 mb-6">
+        <div class="bg-gray-800 rounded-2xl p-4 border border-gray-700">
+          <p class="text-xs text-gray-500 mb-1">Daily Calories</p>
+          <p id="goal-preview-cal" class="text-2xl font-bold text-emerald-400">—</p>
+          <p class="text-xs text-gray-500">kcal</p>
+        </div>
+        <div class="bg-gray-800 rounded-2xl p-4 border border-gray-700">
+          <p class="text-xs text-gray-500 mb-1">Protein</p>
+          <p id="goal-preview-prot" class="text-2xl font-bold text-blue-400">—</p>
+          <p class="text-xs text-gray-500">grams</p>
+        </div>
+        <div class="bg-gray-800 rounded-2xl p-4 border border-gray-700">
+          <p class="text-xs text-gray-500 mb-1">Carbohydrates</p>
+          <p id="goal-preview-carbs" class="text-2xl font-bold text-amber-400">—</p>
+          <p class="text-xs text-gray-500">grams</p>
+        </div>
+        <div class="bg-gray-800 rounded-2xl p-4 border border-gray-700">
+          <p class="text-xs text-gray-500 mb-1">Fats</p>
+          <p id="goal-preview-fats" class="text-2xl font-bold text-pink-400">—</p>
+          <p class="text-xs text-gray-500">grams</p>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="wizPrev()" class="flex-1 py-3 bg-gray-800 hover:bg-gray-700
+                text-gray-300 font-semibold rounded-xl transition">← Back</button>
+        <button onclick="wizFinish()" id="wiz-finish-btn"
+                class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500
+                text-white font-semibold rounded-xl transition">
+                🚀 Let's go!
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════ -->
+<header class="sticky top-0 z-40 bg-gray-950/80 backdrop-blur border-b border-gray-800/60">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-xl">🥗</span>
+      <span class="font-bold text-lg">MyPlate</span>
+      <span id="greeting" class="text-xs text-gray-500 hidden sm:inline"></span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="today-label" class="text-xs text-gray-600"></span>
+      <button id="settings-btn"
+              class="p-2 rounded-lg hover:bg-gray-800 transition text-gray-500
+                     hover:text-white" title="Adjust goals">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573
+                   1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756
+                   .426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826
+                   3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924
+                   1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37
+                   -2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924
+                   0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31
+                   2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+
+<!-- ═══════════════════════════════════════════════
+     MAIN
+══════════════════════════════════════════════════ -->
+<main class="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- ── LEFT COLUMN ──────────────────────────── -->
+  <div class="lg:col-span-2 space-y-5">
+
+    <!-- LOGGER CARD -->
+    <section class="bg-gray-900 rounded-2xl p-5 border border-gray-800">
+      <!-- Tabs -->
+      <div class="flex gap-1 mb-5 border-b border-gray-800 pb-2">
+        <button id="tab-photo" onclick="switchTab('photo')"
+                class="tab-btn active px-4 py-1.5 text-sm font-medium text-emerald-400 transition">
+          📸 Photo
+        </button>
+        <button id="tab-text" onclick="switchTab('text')"
+                class="tab-btn px-4 py-1.5 text-sm font-medium text-gray-500
+                       hover:text-gray-300 transition">
+          ✍️ Text
+        </button>
+        <button id="tab-search" onclick="switchTab('search')"
+                class="tab-btn px-4 py-1.5 text-sm font-medium text-gray-500
+                       hover:text-gray-300 transition">
+          🔍 Search
+        </button>
+      </div>
+
+      <!-- ── PHOTO TAB ────────────────────────── -->
+      <div id="content-photo">
+        <!-- Dropzone -->
+        <div id="dropzone"
+             class="dropzone rounded-xl p-6 text-center cursor-pointer
+                    hover:border-emerald-600 transition"
+             onclick="document.getElementById('photo-input').click()">
+          <input id="photo-input" type="file" accept="image/*" class="hidden"/>
+          <div id="dz-placeholder">
+            <div class="text-4xl mb-2">📷</div>
+            <p class="text-gray-400 text-sm font-medium">
+              Drop a food photo here or <span class="text-emerald-400">click to upload</span>
+            </p>
+            <p class="text-gray-600 text-xs mt-1">JPG, PNG, WebP supported</p>
+          </div>
+          <img id="photo-preview" class="hidden max-h-48 mx-auto rounded-lg object-contain"/>
+        </div>
+
+        <!-- Analyse button (shown after photo selected) -->
+        <div id="analyse-section" class="hidden mt-4">
+          <div id="photo-result-pending">
+            <button id="analyse-btn" onclick="analysePhoto()"
+                    class="gradient-btn w-full py-3 text-white font-semibold rounded-xl
+                           transition-all active:scale-95">
+              🤖 Analyse with AI  <span class="text-xs opacity-75">(~15–30s)</span>
+            </button>
+          </div>
+
+          <!-- Analysing state -->
+          <div id="analysing-state" class="hidden text-center py-4">
+            <div class="flex justify-center mb-3">
+              <svg class="spinner w-8 h-8 text-emerald-400" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10"
+                        stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            </div>
+            <p class="text-emerald-400 text-sm font-medium">AI is reading your meal…</p>
+            <p class="text-gray-600 text-xs mt-1">LLaVA vision model running locally</p>
+          </div>
+
+          <!-- Result state -->
+          <div id="analyse-result" class="hidden">
+            <div class="bg-gray-800/60 border border-gray-700/60 rounded-xl p-4 mt-2">
+              <p class="text-xs text-gray-500 mb-2">AI estimate — edit if needed:</p>
+              <div class="grid grid-cols-2 gap-2 mb-3">
+                <div>
+                  <label class="text-xs text-gray-500">Calories</label>
+                  <input id="ar-cal"  type="number" min="0"
+                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3
+                                py-2 text-white text-sm focus:outline-none focus:ring-1
+                                focus:ring-emerald-500 mt-1"/>
+                </div>
+                <div>
+                  <label class="text-xs text-gray-500">Protein (g)</label>
+                  <input id="ar-prot" type="number" min="0"
+                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3
+                                py-2 text-white text-sm focus:outline-none focus:ring-1
+                                focus:ring-blue-500 mt-1"/>
+                </div>
+                <div>
+                  <label class="text-xs text-gray-500">Carbs (g)</label>
+                  <input id="ar-carbs" type="number" min="0"
+                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3
+                                py-2 text-white text-sm focus:outline-none focus:ring-1
+                                focus:ring-amber-500 mt-1"/>
+                </div>
+                <div>
+                  <label class="text-xs text-gray-500">Fats (g)</label>
+                  <input id="ar-fats" type="number" min="0"
+                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3
+                                py-2 text-white text-sm focus:outline-none focus:ring-1
+                                focus:ring-pink-500 mt-1"/>
+                </div>
+              </div>
+              <p id="ar-notes" class="text-xs text-amber-400 mb-3 hidden"></p>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="resetPhotoTab()"
+                        class="py-2 bg-gray-700 hover:bg-gray-600 text-gray-300
+                               text-sm font-medium rounded-xl transition">
+                  ↺ New photo
+                </button>
+                <button onclick="logPhotoMeal()"
+                        class="py-2 bg-emerald-600 hover:bg-emerald-500 text-white
+                               text-sm font-semibold rounded-xl transition">
+                  ✓ Log this meal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TEXT TAB ──────────────────────────── -->
+      <div id="content-text" class="hidden">
+        <label class="block text-sm text-gray-400 mb-2">What did you eat?</label>
+        <div class="flex gap-3">
+          <div class="relative flex-1">
+            <input id="text-input" type="text"
+                   placeholder="e.g. 2 rotis with dal and curd…"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+                          text-white placeholder-gray-600 focus:outline-none
+                          focus:ring-2 focus:ring-emerald-500 pr-10"/>
+            <div id="text-spinner" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+              <svg class="spinner w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10"
+                        stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            </div>
+          </div>
+          <button id="log-btn" onclick="logTextMeal()"
+                  class="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95
+                         text-white font-semibold rounded-xl transition-all whitespace-nowrap">
+            Log
+          </button>
+        </div>
+        <p id="text-message" class="mt-2 text-sm hidden"></p>
+      </div>
+
+      <!-- ── SEARCH TAB ────────────────────────── -->
+      <div id="content-search" class="hidden">
+        <label class="block text-sm text-gray-400 mb-2">Search food or packaged product</label>
+        <div class="relative">
+          <input id="search-input" type="text"
+                 placeholder="e.g. Amul Butter, Maggi Noodles, Banana…"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+                        text-white placeholder-gray-600 focus:outline-none
+                        focus:ring-2 focus:ring-emerald-500 pl-10"/>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+          <div id="search-spinner" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+            <svg class="spinner w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10"
+                      stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          </div>
+        </div>
+        <p class="text-xs text-gray-600 mt-1">Powered by Open Food Facts · No account needed</p>
+
+        <!-- Search results list -->
+        <div id="search-results" class="mt-3 space-y-2"></div>
+
+        <!-- Selected food / serving input -->
+        <div id="serving-panel" class="hidden mt-3 bg-gray-800/60 border border-gray-700/60
+             rounded-xl p-4">
+          <p id="serving-name" class="text-sm font-medium text-gray-200 mb-1"></p>
+          <p id="serving-per100" class="text-xs text-gray-500 mb-3"></p>
+          <div class="flex gap-3 items-center mb-3">
+            <div class="flex-1">
+              <label class="text-xs text-gray-500 block mb-1">Serving size (grams)</label>
+              <input id="serving-grams" type="number" min="1" max="2000" value="100"
+                     oninput="updateServingCalc()"
+                     class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2
+                            text-white text-sm focus:outline-none focus:ring-1
+                            focus:ring-emerald-500"/>
+            </div>
+            <div class="flex-1">
+              <p class="text-xs text-gray-500 mb-1">Calories</p>
+              <p id="serving-cal-preview" class="text-xl font-bold text-emerald-400">—</p>
+            </div>
+          </div>
+          <div class="flex gap-1.5 text-xs mb-3">
+            <span class="text-gray-500">Protein:</span>
+            <span id="sp-prot" class="text-blue-400 font-medium">—</span>
+            <span class="text-gray-600 mx-1">·</span>
+            <span class="text-gray-500">Carbs:</span>
+            <span id="sp-carbs" class="text-amber-400 font-medium">—</span>
+            <span class="text-gray-600 mx-1">·</span>
+            <span class="text-gray-500">Fats:</span>
+            <span id="sp-fats" class="text-pink-400 font-medium">—</span>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="clearServing()"
+                    class="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300
+                           text-sm rounded-xl transition">Cancel</button>
+            <button onclick="logSearchMeal()"
+                    class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white
+                           text-sm font-semibold rounded-xl transition">✓ Log</button>
+          </div>
+        </div>
+      </div>
+
+    </section><!-- /logger -->
+
+    <!-- MACRO RINGS -->
+    <section class="bg-gray-900 rounded-2xl p-5 border border-gray-800">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="font-semibold text-gray-200">Today's Macros</h2>
+        <!-- Flex Day toggle -->
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <span class="text-sm text-gray-500">Flex Day 🎉</span>
+          <div class="relative">
+            <input id="flex-toggle" type="checkbox" class="sr-only peer"/>
+            <div class="w-10 h-6 bg-gray-700 peer-checked:bg-amber-500
+                        rounded-full transition-colors duration-300"></div>
+            <div class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow
+                        transition-transform duration-300 peer-checked:translate-x-4"></div>
+          </div>
+        </label>
+      </div>
+
+      <div id="macros-container" class="grid grid-cols-2 sm:grid-cols-4 gap-5">
+        <!-- Calories -->
+        <div class="flex flex-col items-center gap-2">
+          <div class="relative w-24 h-24">
+            <svg class="ring-svg w-full h-full" viewBox="0 0 80 80">
+              <circle class="ring-track" cx="40" cy="40" r="34"/>
+              <circle id="ring-calories" class="ring-fill" cx="40" cy="40" r="34"
+                      stroke="#10b981" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="val-calories" class="text-xl font-bold">0</span>
+              <span class="text-xs text-gray-500">kcal</span>
+            </div>
+          </div>
+          <div class="text-center">
+            <p class="text-sm font-medium text-gray-300">Calories</p>
+            <p class="text-xs text-gray-600">of <span id="goal-calories">2000</span></p>
+          </div>
+        </div>
+        <!-- Protein -->
+        <div class="flex flex-col items-center gap-2">
+          <div class="relative w-24 h-24">
+            <svg class="ring-svg w-full h-full" viewBox="0 0 80 80">
+              <circle class="ring-track" cx="40" cy="40" r="34"/>
+              <circle id="ring-protein" class="ring-fill" cx="40" cy="40" r="34"
+                      stroke="#3b82f6" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="val-protein" class="text-xl font-bold">0</span>
+              <span class="text-xs text-gray-500">g</span>
+            </div>
+          </div>
+          <div class="text-center">
+            <p class="text-sm font-medium text-gray-300">Protein</p>
+            <p class="text-xs text-gray-600">of <span id="goal-protein">150</span>g</p>
+          </div>
+        </div>
+        <!-- Carbs -->
+        <div class="flex flex-col items-center gap-2">
+          <div class="relative w-24 h-24">
+            <svg class="ring-svg w-full h-full" viewBox="0 0 80 80">
+              <circle class="ring-track" cx="40" cy="40" r="34"/>
+              <circle id="ring-carbs" class="ring-fill" cx="40" cy="40" r="34"
+                      stroke="#f59e0b" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="val-carbs" class="text-xl font-bold">0</span>
+              <span class="text-xs text-gray-500">g</span>
+            </div>
+          </div>
+          <div class="text-center">
+            <p class="text-sm font-medium text-gray-300">Carbs</p>
+            <p class="text-xs text-gray-600">of <span id="goal-carbs">250</span>g</p>
+          </div>
+        </div>
+        <!-- Fats -->
+        <div class="flex flex-col items-center gap-2">
+          <div class="relative w-24 h-24">
+            <svg class="ring-svg w-full h-full" viewBox="0 0 80 80">
+              <circle class="ring-track" cx="40" cy="40" r="34"/>
+              <circle id="ring-fats" class="ring-fill" cx="40" cy="40" r="34"
+                      stroke="#ec4899" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="val-fats" class="text-xl font-bold">0</span>
+              <span class="text-xs text-gray-500">g</span>
+            </div>
+          </div>
+          <div class="text-center">
+            <p class="text-sm font-medium text-gray-300">Fats</p>
+            <p class="text-xs text-gray-600">of <span id="goal-fats">65</span>g</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flex banner -->
+      <div id="flex-banner"
+           class="hidden mt-4 rounded-xl bg-amber-900/30 border border-amber-700/40
+                  text-amber-300 text-sm text-center py-2 px-4">
+        🎉 Flex Day — enjoy without the guilt!
+      </div>
+    </section>
+
+    <!-- MEAL TIMELINE -->
+    <section class="bg-gray-900 rounded-2xl p-5 border border-gray-800">
+      <h2 class="font-semibold text-gray-200 mb-4">Today's Meals</h2>
+      <div id="meal-timeline" class="space-y-3">
+        <p id="no-meals-msg" class="text-center text-gray-600 py-10 text-sm">
+          Nothing logged yet — take a photo or type what you ate!
+        </p>
+      </div>
+    </section>
+
+  </div><!-- /left column -->
+
+  <!-- ── RIGHT COLUMN (sidebar) ────────────────── -->
+  <div class="space-y-5">
+
+    <!-- 7-day trends -->
+    <section class="bg-gray-900 rounded-2xl p-5 border border-gray-800">
+      <h2 class="font-semibold text-gray-200 mb-4">7-Day Trends</h2>
+      <div class="relative h-44">
+        <canvas id="trends-chart"></canvas>
+      </div>
+      <div class="mt-3 flex gap-4 justify-center text-xs text-gray-500">
+        <span class="flex items-center gap-1">
+          <span class="inline-block w-3 h-2.5 rounded-sm bg-emerald-500/60"></span>Calories
+        </span>
+        <span class="flex items-center gap-1">
+          <span class="inline-block w-3 h-0.5 bg-blue-400 rounded-full"></span>Protein
+        </span>
+      </div>
+    </section>
+
+    <!-- Quick stats -->
+    <section class="bg-gray-900 rounded-2xl p-5 border border-gray-800 space-y-3">
+      <h2 class="font-semibold text-gray-200">Quick Stats</h2>
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-500">Remaining</span>
+        <span id="stat-remaining" class="font-semibold text-emerald-400">—</span>
+      </div>
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-500">Meals logged</span>
+        <span id="stat-count" class="font-semibold text-white">0</span>
+      </div>
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-500">% from protein</span>
+        <span id="stat-pct-p" class="font-semibold text-blue-400">0%</span>
+      </div>
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-500">% from carbs</span>
+        <span id="stat-pct-c" class="font-semibold text-amber-400">0%</span>
+      </div>
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-500">% from fat</span>
+        <span id="stat-pct-f" class="font-semibold text-pink-400">0%</span>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+
+<!-- ═══════════════════════════════════════════════
+     SETTINGS MODAL
+══════════════════════════════════════════════════ -->
+<div id="settings-modal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center p-4
+            bg-black/70 backdrop-blur-sm">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+    <div class="flex justify-between mb-5">
+      <h3 class="text-lg font-semibold">Adjust Goals</h3>
+      <button id="close-settings" class="text-gray-500 hover:text-white transition">✕</button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="text-sm text-gray-400 block mb-1">Calories (kcal)</label>
+        <input id="set-calories" type="number" min="500" max="6000" step="50"
+               class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+      </div>
+      <div>
+        <label class="text-sm text-gray-400 block mb-1">Protein (g)</label>
+        <input id="set-protein" type="number" min="0" max="500" step="5"
+               class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+      <div>
+        <label class="text-sm text-gray-400 block mb-1">Carbohydrates (g)</label>
+        <input id="set-carbs" type="number" min="0" max="800" step="5"
+               class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-amber-500"/>
+      </div>
+      <div>
+        <label class="text-sm text-gray-400 block mb-1">Fats (g)</label>
+        <input id="set-fats" type="number" min="0" max="300" step="5"
+               class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-pink-500"/>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-6">
+      <button id="save-settings"
+              class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white
+                     font-semibold py-2 rounded-xl transition">Save</button>
+      <button id="cancel-settings"
+              class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300
+                     font-semibold py-2 rounded-xl transition">Cancel</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     EDIT MEAL MODAL
+══════════════════════════════════════════════════ -->
+<div id="edit-modal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center p-4
+            bg-black/70 backdrop-blur-sm">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+    <div class="flex justify-between mb-2">
+      <h3 class="text-lg font-semibold">Edit Meal</h3>
+      <button id="close-edit" class="text-gray-500 hover:text-white transition">✕</button>
+    </div>
+    <p id="edit-meal-text" class="text-sm text-gray-500 italic mb-4 truncate"></p>
+    <input type="hidden" id="edit-meal-id"/>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">Calories</label>
+        <input id="edit-calories" type="number" min="0" step="1"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">Protein (g)</label>
+        <input id="edit-protein" type="number" min="0" step="0.1"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">Carbs (g)</label>
+        <input id="edit-carbs" type="number" min="0" step="0.1"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-amber-500"/>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">Fats (g)</label>
+        <input id="edit-fats" type="number" min="0" step="0.1"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
+                      text-white focus:outline-none focus:ring-2 focus:ring-pink-500"/>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-6">
+      <button id="save-edit"
+              class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white
+                     font-semibold py-2 rounded-xl transition">Save</button>
+      <button id="cancel-edit"
+              class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300
+                     font-semibold py-2 rounded-xl transition">Cancel</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ── Helpers ────────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const CIRC = 2 * Math.PI * 34;  // SVG ring circumference (r=34)
+
+// ── App state ──────────────────────────────────────────────────────
+const S = {
+  goals:   { calories: 2000, protein: 150, carbs: 250, fats: 65 },
+  totals:  { total_cals: 0, total_protein: 0, total_carbs: 0, total_fats: 0 },
+  meals:   [],
+  isFlexDay: false,
+  summaryId: null,
+  userName: 'Friend',
+  trendsChart: null,
+
+  // photo tab
+  pendingPhoto: null,   // { filename, macros }
+
+  // search tab
+  selectedFood: null,
+  searchTimer: null,
+};
+
+// ══════════════════════════════════════════════════════════════════
+// WIZARD
+// ══════════════════════════════════════════════════════════════════
+let wizStep = 1;
+const wizData = { gender: 'male', goal: 'maintain' };
+
+function showWizard() {
+  $('wizard-overlay').classList.remove('hidden');
+}
+
+function hideWizard() {
+  $('wizard-overlay').classList.add('hidden');
+}
+
+function wizSetStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    $(`wiz-step-${i}`).classList.toggle('hidden', i !== n);
+    $(`dot-${i}`).classList.toggle('active', i === n);
+  }
+  wizStep = n;
+}
+
+function wizNext() {
+  if (wizStep === 1) {
+    const name = $('wiz-name').value.trim();
+    const age  = parseInt($('wiz-age').value);
+    if (!name || !age || age < 10 || age > 100) {
+      alert('Please enter your name and a valid age (10–100).');
+      return;
+    }
+    wizData.name = name;
+    wizData.age  = age;
+  } else if (wizStep === 2) {
+    const w = parseFloat($('wiz-weight').value);
+    const h = parseFloat($('wiz-height').value);
+    if (!w || !h || w < 30 || h < 100) {
+      alert('Please enter valid weight (≥30 kg) and height (≥100 cm).');
+      return;
+    }
+    wizData.weight_kg = w;
+    wizData.height_cm = h;
+  } else if (wizStep === 3) {
+    wizData.activity = $('wiz-activity').value;
+    // Show goals preview
+    const g = calcTDEE(wizData);
+    $('goal-preview-cal').textContent  = g.calories;
+    $('goal-preview-prot').textContent = g.protein;
+    $('goal-preview-carbs').textContent = g.carbs;
+    $('goal-preview-fats').textContent  = g.fats;
+  }
+  wizSetStep(wizStep + 1);
+}
+
+function wizPrev() { wizSetStep(wizStep - 1); }
+
+function selectGender(g) {
+  wizData.gender = g;
+  ['male','female'].forEach(x => {
+    $(`btn-${x}`).classList.toggle('border-emerald-500', x === g);
+    $(`btn-${x}`).classList.toggle('bg-emerald-900/30', x === g);
+  });
+}
+
+function selectGoal(g) {
+  wizData.goal = g;
+  ['lose','maintain','gain'].forEach(x => {
+    $(`goal-${x}`).classList.toggle('border-emerald-600', x === g);
+    $(`goal-${x}`).classList.toggle('bg-emerald-900/30', x === g);
+    $(`goal-${x}`).classList.toggle('border-gray-700', x !== g);
+    $(`goal-${x}`).classList.toggle('bg-gray-800', x !== g);
+  });
+}
+
+async function wizFinish() {
+  const btn = $('wiz-finish-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const res  = await fetch('/api/setup_profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(wizData),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+    S.goals    = json.data.goals;
+    S.userName = json.data.name;
+    hideWizard();
+    updateHeader();
+    updateMacroUI(S.totals, S.goals);
+  } catch (err) {
+    alert('Setup failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 Let\'s go!';
+  }
+}
+
+// TDEE (Mifflin-St Jeor) — mirrors server logic for live preview
+function calcTDEE(d) {
+  let bmr = d.gender === 'male'
+    ? 10 * d.weight_kg + 6.25 * d.height_cm - 5 * d.age + 5
+    : 10 * d.weight_kg + 6.25 * d.height_cm - 5 * d.age - 161;
+  const mult = { sedentary:1.2, light:1.375, moderate:1.55, active:1.725, very_active:1.9 };
+  let tdee = bmr * (mult[d.activity] || 1.55);
+  if (d.goal === 'lose')    tdee *= 0.80;
+  else if (d.goal === 'gain') tdee *= 1.10;
+  return {
+    calories: Math.ceil(tdee),
+    protein:  Math.ceil(tdee * 0.30 / 4),
+    carbs:    Math.ceil(tdee * 0.40 / 4),
+    fats:     Math.ceil(tdee * 0.30 / 9),
+  };
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  ['photo','text','search'].forEach(t => {
+    $(`content-${t}`).classList.toggle('hidden', t !== tab);
+    $(`tab-${t}`).classList.toggle('active', t === tab);
+    $(`tab-${t}`).classList.toggle('text-emerald-400', t === tab);
+    $(`tab-${t}`).classList.toggle('text-gray-500', t !== tab);
+  });
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// PHOTO TAB
+// ══════════════════════════════════════════════════════════════════
+function initDropzone() {
+  const dz    = $('dropzone');
+  const input = $('photo-input');
+
+  input.addEventListener('change', () => {
+    if (input.files[0]) loadPhotoPreview(input.files[0]);
+  });
+
+  dz.addEventListener('dragover', e => {
+    e.preventDefault(); dz.classList.add('dragover');
+  });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) loadPhotoPreview(e.dataTransfer.files[0]);
+  });
+}
+
+function loadPhotoPreview(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = $('photo-preview');
+    img.src = ev.target.result;
+    img.classList.remove('hidden');
+    $('dz-placeholder').classList.add('hidden');
+    $('analyse-section').classList.remove('hidden');
+    $('analyse-result').classList.add('hidden');
+    $('analysing-state').classList.add('hidden');
+    $('photo-result-pending').classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analysePhoto() {
+  const input = $('photo-input');
+  if (!input.files[0]) return;
+
+  $('photo-result-pending').classList.add('hidden');
+  $('analysing-state').classList.remove('hidden');
+  $('analyse-result').classList.add('hidden');
+
+  const form = new FormData();
+  form.append('photo', input.files[0]);
+
+  try {
+    const res  = await fetch('/api/analyze_photo', { method: 'POST', body: form });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    const { macros, photo_filename } = json.data;
+    S.pendingPhoto = { filename: photo_filename, macros };
+
+    $('ar-cal').value  = macros.calories;
+    $('ar-prot').value = macros.protein;
+    $('ar-carbs').value = macros.carbs;
+    $('ar-fats').value = macros.fats;
+
+    const notesEl = $('ar-notes');
+    if (macros.notes) {
+      notesEl.textContent = macros.notes;
+      notesEl.classList.remove('hidden');
+    } else {
+      notesEl.classList.add('hidden');
+    }
+  } catch (err) {
+    alert('Analysis failed: ' + err.message);
+    $('photo-result-pending').classList.remove('hidden');
+  } finally {
+    $('analysing-state').classList.add('hidden');
+    $('analyse-result').classList.remove('hidden');
+  }
+}
+
+async function logPhotoMeal() {
+  const cal  = parseFloat($('ar-cal').value  || 0);
+  const prot = parseFloat($('ar-prot').value || 0);
+  const carb = parseFloat($('ar-carbs').value || 0);
+  const fat  = parseFloat($('ar-fats').value || 0);
+  const filename = S.pendingPhoto?.filename || null;
+
+  // Build a description from the AI items if available
+  const desc = S.pendingPhoto?.macros?.items?.map(i => i.name).join(', ')
+               || 'Photo meal';
+
+  await doLogMeal({
+    text: desc,
+    calories: cal, protein: prot, carbs: carb, fats: fat,
+    source: 'photo',
+    photo_filename: filename,
+  });
+  resetPhotoTab();
+}
+
+function resetPhotoTab() {
+  $('photo-input').value       = '';
+  $('photo-preview').src       = '';
+  $('photo-preview').classList.add('hidden');
+  $('dz-placeholder').classList.remove('hidden');
+  $('analyse-section').classList.add('hidden');
+  $('analyse-result').classList.add('hidden');
+  S.pendingPhoto = null;
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// TEXT TAB
+// ══════════════════════════════════════════════════════════════════
+async function logTextMeal() {
+  const text = $('text-input').value.trim();
+  if (!text) return;
+
+  $('log-btn').disabled = true;
+  $('text-input').disabled = true;
+  $('text-spinner').classList.remove('hidden');
+  showTextMsg('', '');
+
+  try {
+    await doLogMeal({ text, source: 'text' });
+    $('text-input').value = '';
+  } catch (err) {
+    showTextMsg('Error: ' + err.message, 'text-red-400');
+  } finally {
+    $('log-btn').disabled = false;
+    $('text-input').disabled = false;
+    $('text-spinner').classList.add('hidden');
+    $('text-input').focus();
+  }
+}
+
+$('text-input').addEventListener('keydown', e => { if (e.key === 'Enter') logTextMeal(); });
+
+function showTextMsg(text, cls) {
+  const el = $('text-message');
+  el.textContent = text;
+  el.className   = `mt-2 text-sm ${cls}`;
+  el.classList.toggle('hidden', !text);
+  if (text) setTimeout(() => el.classList.add('hidden'), 6000);
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// SEARCH TAB
+// ══════════════════════════════════════════════════════════════════
+$('search-input').addEventListener('input', e => {
+  clearTimeout(S.searchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { $('search-results').innerHTML = ''; return; }
+  S.searchTimer = setTimeout(() => doSearch(q), 400);
+});
+
+async function doSearch(q) {
+  $('search-spinner').classList.remove('hidden');
+  try {
+    const res  = await fetch(`/api/search_food?q=${encodeURIComponent(q)}`);
+    const json = await res.json();
+    renderSearchResults(json.ok ? json.data : []);
+  } finally {
+    $('search-spinner').classList.add('hidden');
+  }
+}
+
+function renderSearchResults(results) {
+  const el = $('search-results');
+  if (!results.length) {
+    el.innerHTML = '<p class="text-gray-600 text-sm text-center py-2">No results found.</p>';
+    return;
+  }
+  el.innerHTML = results.slice(0, 6).map((r, i) => `
+    <button onclick="selectFood(${i})"
+            class="search-result-btn w-full text-left bg-gray-800/60 border border-gray-700/60
+                   hover:border-emerald-600/60 rounded-xl px-4 py-3 transition"
+            data-idx="${i}">
+      <div class="flex justify-between items-start">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-200 truncate">${r.name}</p>
+          ${r.brand ? `<p class="text-xs text-gray-500">${r.brand}</p>` : ''}
+        </div>
+        <span class="text-xs text-emerald-400 font-medium ml-3 shrink-0">
+          ${r.calories_per_100g} kcal/100g
+        </span>
+      </div>
+    </button>`).join('');
+
+  // Stash results so selectFood can access by index
+  $('search-results').dataset.results = JSON.stringify(results.slice(0, 6));
+}
+
+function selectFood(idx) {
+  const results = JSON.parse($('search-results').dataset.results || '[]');
+  S.selectedFood = results[idx];
+  const f = S.selectedFood;
+
+  $('serving-name').textContent   = f.name + (f.brand ? ` · ${f.brand}` : '');
+  $('serving-per100').textContent =
+    `Per 100g: ${f.calories_per_100g} kcal · ${f.protein_per_100g}g P · ${f.carbs_per_100g}g C · ${f.fats_per_100g}g F`;
+  $('serving-grams').value = 100;
+  $('serving-panel').classList.remove('hidden');
+  updateServingCalc();
+}
+
+function updateServingCalc() {
+  if (!S.selectedFood) return;
+  const g = parseFloat($('serving-grams').value) || 0;
+  const f = S.selectedFood;
+  const factor = g / 100;
+  $('serving-cal-preview').textContent = Math.round(f.calories_per_100g * factor);
+  $('sp-prot').textContent  = (f.protein_per_100g  * factor).toFixed(1) + 'g';
+  $('sp-carbs').textContent = (f.carbs_per_100g    * factor).toFixed(1) + 'g';
+  $('sp-fats').textContent  = (f.fats_per_100g     * factor).toFixed(1) + 'g';
+}
+
+function clearServing() {
+  $('serving-panel').classList.add('hidden');
+  S.selectedFood = null;
+}
+
+async function logSearchMeal() {
+  if (!S.selectedFood) return;
+  const g = parseFloat($('serving-grams').value) || 100;
+  const f = S.selectedFood;
+  const factor = g / 100;
+  const name = f.name + (f.brand ? ` (${f.brand})` : '');
+
+  await doLogMeal({
+    text:     `${name} — ${g}g`,
+    calories: +(f.calories_per_100g * factor).toFixed(1),
+    protein:  +(f.protein_per_100g  * factor).toFixed(1),
+    carbs:    +(f.carbs_per_100g    * factor).toFixed(1),
+    fats:     +(f.fats_per_100g     * factor).toFixed(1),
+    source:   'search',
+  });
+
+  $('search-input').value = '';
+  $('search-results').innerHTML = '';
+  clearServing();
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// CORE LOG — shared by all three tabs
+// ══════════════════════════════════════════════════════════════════
+async function doLogMeal(body) {
+  const res  = await fetch('/api/log_meal', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Log failed');
+
+  S.meals.push(json.data.meal);
+  S.totals = json.data.totals;
+  updateMacroUI(S.totals, S.goals);
+  renderTimeline(S.meals);
+  loadTrends();
+
+  if (body.source === 'text' && json.data.meal) {
+    showTextMsg('✓ Logged!', 'text-emerald-400');
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// MACRO RINGS + QUICK STATS
+// ══════════════════════════════════════════════════════════════════
+function setRing(id, value, goal) {
+  const pct = Math.min(value / (goal || 1), 1);
+  $(id).style.strokeDashoffset = CIRC * (1 - pct);
+}
+
+function updateMacroUI(t, g) {
+  $('val-calories').textContent = Math.round(t.total_cals);
+  $('val-protein').textContent  = Math.round(t.total_protein);
+  $('val-carbs').textContent    = Math.round(t.total_carbs);
+  $('val-fats').textContent     = Math.round(t.total_fats);
+
+  $('goal-calories').textContent = g.calories;
+  $('goal-protein').textContent  = g.protein;
+  $('goal-carbs').textContent    = g.carbs;
+  $('goal-fats').textContent     = g.fats;
+
+  setRing('ring-calories', t.total_cals,    g.calories);
+  setRing('ring-protein',  t.total_protein, g.protein);
+  setRing('ring-carbs',    t.total_carbs,   g.carbs);
+  setRing('ring-fats',     t.total_fats,    g.fats);
+
+  const rem  = Math.max(0, g.calories - t.total_cals);
+  $('stat-remaining').textContent = Math.round(rem) + ' kcal';
+  $('stat-count').textContent     = S.meals.length;
+
+  const tot = t.total_cals || 1;
+  $('stat-pct-p').textContent = Math.round((t.total_protein * 4 / tot) * 100) + '%';
+  $('stat-pct-c').textContent = Math.round((t.total_carbs   * 4 / tot) * 100) + '%';
+  $('stat-pct-f').textContent = Math.round((t.total_fats    * 9 / tot) * 100) + '%';
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// MEAL TIMELINE
+// ══════════════════════════════════════════════════════════════════
+const SOURCE_BADGE = {
+  photo:  '<span class="text-xs bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded-full">📸 AI Photo</span>',
+  text:   '<span class="text-xs bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded-full">✍️ Text</span>',
+  search: '<span class="text-xs bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded-full">🔍 Search</span>',
+};
+
+function fmtTime(iso) {
+  const d = new Date(iso.replace(' ', 'T') + 'Z');
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function badge(label, val, col) {
+  return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs
+                       bg-gray-800/80 border border-gray-700/60 ${col}">
+            <span class="text-gray-500">${label}</span>${val}
+          </span>`;
+}
+
+function renderMealCard(meal) {
+  const card = document.createElement('div');
+  card.className = 'meal-card bg-gray-800/50 border border-gray-700/50 rounded-xl p-4';
+  card.dataset.id = meal.id;
+
+  const thumb = meal.photo_filename
+    ? `<img src="/uploads/${meal.photo_filename}" class="meal-thumb mr-3"
+           onerror="this.style.display='none'"/>`
+    : '';
+
+  const srcBadge = SOURCE_BADGE[meal.source] || SOURCE_BADGE.text;
+
+  card.innerHTML = `
+    <div class="flex items-start gap-0">
+      ${thumb}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-gray-200 truncate"
+               title="${meal.raw_text}">${meal.raw_text}</p>
+            <div class="flex items-center gap-2 mt-0.5">
+              <span class="text-xs text-gray-600">${fmtTime(meal.timestamp)}</span>
+              ${srcBadge}
+            </div>
+          </div>
+          <div class="flex gap-1 shrink-0">
+            <button class="edit-btn p-1.5 rounded-lg hover:bg-gray-700 text-gray-500
+                           hover:text-blue-400 transition" title="Edit">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                   stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5
+                         m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+            <button class="del-btn p-1.5 rounded-lg hover:bg-gray-700 text-gray-500
+                           hover:text-red-400 transition" title="Delete">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                   stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0
+                         01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0
+                         00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-2">
+          ${badge('🔥', Math.round(meal.parsed_cals)   + ' kcal', 'text-emerald-400')}
+          ${badge('💪', Math.round(meal.parsed_protein) + 'g',     'text-blue-400')}
+          ${badge('🌾', Math.round(meal.parsed_carbs)   + 'g',     'text-amber-400')}
+          ${badge('🥑', Math.round(meal.parsed_fats)    + 'g',     'text-pink-400')}
+        </div>
+      </div>
+    </div>`;
+
+  card.querySelector('.edit-btn').addEventListener('click', () => openEditModal(meal));
+  card.querySelector('.del-btn').addEventListener('click',  () => deleteMeal(meal.id, card));
+  return card;
+}
+
+function renderTimeline(meals) {
+  const tl = $('meal-timeline');
+  tl.querySelectorAll('.meal-card').forEach(el => el.remove());
+  $('no-meals-msg').classList.toggle('hidden', meals.length > 0);
+  meals.forEach(m => tl.appendChild(renderMealCard(m)));
+}
+
+async function deleteMeal(id, card) {
+  card.style.opacity = '0.4';
+  const res  = await fetch(`/api/meals/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!json.ok) { card.style.opacity = '1'; return; }
+  S.meals  = S.meals.filter(m => m.id !== id);
+  S.totals = json.data.totals;
+  updateMacroUI(S.totals, S.goals);
+  card.remove();
+  $('no-meals-msg').classList.toggle('hidden', S.meals.length > 0);
+  loadTrends();
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// FLEX DAY
+// ══════════════════════════════════════════════════════════════════
+function applyFlexDay(active) {
+  $('flex-toggle').checked = active;
+  $('macros-container').classList.toggle('flex-blur', active);
+  $('flex-banner').classList.toggle('hidden', !active);
+}
+
+$('flex-toggle').addEventListener('change', async () => {
+  const res  = await fetch('/api/flex_toggle', { method: 'POST' });
+  const json = await res.json();
+  if (json.ok) applyFlexDay(json.data.is_flex_day);
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+// TRENDS CHART
+// ══════════════════════════════════════════════════════════════════
+async function loadTrends() {
+  const res  = await fetch('/api/trends');
+  const json = await res.json();
+  if (!json.ok) return;
+
+  const rows   = json.data;
+  const labels = rows.map(r => {
+    const d = new Date(r.date + 'T00:00:00');
+    return d.toLocaleDateString([], { weekday: 'short', day: 'numeric' });
+  });
+
+  if (S.trendsChart) S.trendsChart.destroy();
+  S.trendsChart = new Chart($('trends-chart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Calories',
+          data: rows.map(r => Math.round(r.total_cals)),
+          backgroundColor: 'rgba(16,185,129,.35)',
+          borderColor:     'rgba(16,185,129,.8)',
+          borderWidth: 1.5,
+          borderRadius: 4,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Protein (g)',
+          data: rows.map(r => Math.round(r.total_protein)),
+          type: 'line',
+          borderColor: '#60a5fa',
+          backgroundColor: 'rgba(96,165,250,.15)',
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.4,
+          yAxisID: 'y1',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { mode: 'index', intersect: false },
+      },
+      scales: {
+        x:  { grid: { color: 'rgba(255,255,255,.04)' },
+               ticks: { color: '#6b7280', font: { size: 10 } } },
+        y:  { grid: { color: 'rgba(255,255,255,.04)' },
+               ticks: { color: '#6b7280', font: { size: 10 } },
+               position: 'left' },
+        y1: { display: false, position: 'right' },
+      },
+    },
+  });
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// SETTINGS MODAL
+// ══════════════════════════════════════════════════════════════════
+$('settings-btn').addEventListener('click', async () => {
+  const res  = await fetch('/api/settings');
+  const json = await res.json();
+  if (json.ok) {
+    $('set-calories').value = json.data.calories;
+    $('set-protein').value  = json.data.protein;
+    $('set-carbs').value    = json.data.carbs;
+    $('set-fats').value     = json.data.fats;
+  }
+  $('settings-modal').classList.remove('hidden');
+});
+
+['close-settings','cancel-settings'].forEach(id =>
+  $(id).addEventListener('click', () => $('settings-modal').classList.add('hidden'))
+);
+
+$('save-settings').addEventListener('click', async () => {
+  const body = {
+    calories: +$('set-calories').value,
+    protein:  +$('set-protein').value,
+    carbs:    +$('set-carbs').value,
+    fats:     +$('set-fats').value,
+  };
+  const res  = await fetch('/api/settings', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (json.ok) {
+    S.goals = body;
+    updateMacroUI(S.totals, S.goals);
+    $('settings-modal').classList.add('hidden');
+  }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+// EDIT MEAL MODAL
+// ══════════════════════════════════════════════════════════════════
+function openEditModal(meal) {
+  $('edit-meal-id').value     = meal.id;
+  $('edit-meal-text').textContent = meal.raw_text;
+  $('edit-calories').value    = meal.parsed_cals;
+  $('edit-protein').value     = meal.parsed_protein;
+  $('edit-carbs').value       = meal.parsed_carbs;
+  $('edit-fats').value        = meal.parsed_fats;
+  $('edit-modal').classList.remove('hidden');
+}
+
+['close-edit','cancel-edit'].forEach(id =>
+  $(id).addEventListener('click', () => $('edit-modal').classList.add('hidden'))
+);
+
+$('save-edit').addEventListener('click', async () => {
+  const id   = +$('edit-meal-id').value;
+  const body = {
+    calories: +$('edit-calories').value,
+    protein:  +$('edit-protein').value,
+    carbs:    +$('edit-carbs').value,
+    fats:     +$('edit-fats').value,
+  };
+  const res  = await fetch(`/api/meals/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (json.ok) {
+    const idx = S.meals.findIndex(m => m.id === id);
+    if (idx !== -1) S.meals[idx] = json.data.meal;
+    S.totals = json.data.totals;
+    updateMacroUI(S.totals, S.goals);
+    renderTimeline(S.meals);
+    $('edit-modal').classList.add('hidden');
+    loadTrends();
+  }
+});
+
+
+// Close modals on backdrop click
+['settings-modal','edit-modal','wizard-overlay'].forEach(id => {
+  if (id === 'wizard-overlay') return;  // wizard: must be explicitly closed
+  $(id).addEventListener('click', e => {
+    if (e.target === $(id)) $(id).classList.add('hidden');
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+// HEADER
+// ══════════════════════════════════════════════════════════════════
+function updateHeader() {
+  const h = new Date().getHours();
+  const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  $('greeting').textContent = `· ${greeting}, ${S.userName}!`;
+  $('greeting').classList.remove('hidden');
+  $('today-label').textContent = new Date().toLocaleDateString([], {
+    weekday: 'short', month: 'short', day: 'numeric',
+  });
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════════════════════
+(async () => {
+  initDropzone();
+
+  // 1. Check profile status
+  const pRes  = await fetch('/api/profile');
+  const pData = (await pRes.json()).data;
+
+  if (pData && pData.name) S.userName = pData.name;
+
+  if (!pData?.is_setup_complete) {
+    showWizard();
+    wizSetStep(1);
+    selectGender('male');
+    selectGoal('maintain');
+  } else {
+    updateHeader();
+  }
+
+  // 2. Load today's data
+  const tRes  = await fetch('/api/today');
+  const tData = (await tRes.json()).data;
+
+  if (tData) {
+    S.goals      = tData.goals;
+    S.totals     = tData.totals;
+    S.meals      = tData.meals;
+    S.isFlexDay  = tData.is_flex_day;
+    S.summaryId  = tData.summary.id;
+
+    updateMacroUI(S.totals, S.goals);
+    renderTimeline(S.meals);
+    applyFlexDay(S.isFlexDay);
+    if (pData?.is_setup_complete) updateHeader();
+  }
+
+  // 3. Load trends
+  loadTrends();
+})();
+</script>
+</body>
+</html>

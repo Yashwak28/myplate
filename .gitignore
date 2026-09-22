@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables (contains secrets — never commit this)
+.env
+
+# Local database
+*.db
+*.sqlite3
+
+# Uploaded food photos (ephemeral — not needed in git)
+static/uploads/*.jpg
+static/uploads/*.jpeg
+static/uploads/*.png
+static/uploads/*.webp
+static/uploads/*.gif
+static/uploads/*.bmp
+
+# Binaries
+*.exe
+
+# IDE & OS files
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Logs
+*.log
