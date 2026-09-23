@@ -97,6 +97,8 @@ def _migrate(conn):
         conn.execute("ALTER TABLE users ADD COLUMN is_setup_complete INTEGER NOT NULL DEFAULT 0")
     if "name" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT 'Friend'")
+    if "gemini_api_key" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN gemini_api_key TEXT DEFAULT ''")
 
     # profile — add missing columns from old schema
     prof_cols = {r[1] for r in conn.execute("PRAGMA table_info(profile)")}
@@ -185,14 +187,35 @@ def complete_setup(user_id: int, name: str, calorie_goal: float,
 
 
 def update_user_goals(user_id: int, calorie_goal: float, protein_goal: float,
-                      carb_goal: float, fat_goal: float) -> None:
+                      carb_goal: float, fat_goal: float, gemini_api_key: str | None = None) -> None:
     with get_db() as conn:
-        conn.execute(
-            """UPDATE users
-               SET calorie_goal=?, protein_goal=?, carb_goal=?, fat_goal=?
-               WHERE id=?""",
-            (calorie_goal, protein_goal, carb_goal, fat_goal, user_id),
-        )
+        if gemini_api_key is not None:
+            conn.execute(
+                """UPDATE users
+                   SET calorie_goal=?, protein_goal=?, carb_goal=?, fat_goal=?, gemini_api_key=?
+                   WHERE id=?""",
+                (calorie_goal, protein_goal, carb_goal, fat_goal, gemini_api_key.strip(), user_id),
+            )
+        else:
+            conn.execute(
+                """UPDATE users
+                   SET calorie_goal=?, protein_goal=?, carb_goal=?, fat_goal=?
+                   WHERE id=?""",
+                (calorie_goal, protein_goal, carb_goal, fat_goal, user_id),
+            )
+
+
+def get_gemini_api_key(user_id: int = 1) -> str:
+    with get_db() as conn:
+        row = conn.execute("SELECT gemini_api_key FROM users WHERE id=?", (user_id,)).fetchone()
+        if row and row["gemini_api_key"]:
+            return row["gemini_api_key"].strip()
+    return ""
+
+
+def set_gemini_api_key(api_key: str, user_id: int = 1) -> None:
+    with get_db() as conn:
+        conn.execute("UPDATE users SET gemini_api_key=? WHERE id=?", (api_key.strip(), user_id))
 
 
 # ---------------------------------------------------------------------------

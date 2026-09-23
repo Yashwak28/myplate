@@ -1,21 +1,69 @@
 """
-food_search.py — Reliable food and product search with Open Food Facts + Gemini AI Fallback.
+food_search.py — Multi-tiered food and product search engine.
 
-1. Tries Open Food Facts API first.
-2. If Open Food Facts is down (e.g. 503 error), rate-limited, or returns 0 items:
-   Seamlessly falls back to Google Gemini 3.8 Flash for instant per-100g nutritional facts.
-3. Also checks the local food database for common staples.
+Tier 1: Instant local verified database (USDA & IFCT - 100% reliable, zero network latency).
+Tier 2: Google Gemini AI Nutrition Search (for custom, niche, or restaurant items).
+Tier 3: Open Food Facts API (for packaged branded barcodes when available).
 """
 
 import logging
 import requests
-from ai_parser import _get_client, _extract_json, _clean_num, _MOCK_DB
+from ai_parser import _get_client, _extract_json, _clean_num
+import nutrition_db
 
 logger = logging.getLogger(__name__)
 
-_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
+_OPENFOODFACTS_URL = "https://world.openfoodfacts.org/cgi/search.pl"
 _HEADERS = {"User-Agent": "MyPlate-Tracker/2.0 (contact@myplate.app)"}
 _FIELDS = "product_name,brands,serving_size,nutriments"
+
+
+def search_food(query: str, page_size: int = 8) -> list[dict]:
+    """Search for food items with reliable multi-tier fallback."""
+    q = (query or "").strip()
+    if len(q) < 2:
+        return []
+
+    results = []
+    seen_names = set()
+
+    # Tier 1: Local verified nutrition database (always works, instant)
+    try:
+        local_items = nutrition_db.search_local_foods(q, limit=page_size)
+        for item in local_items:
+            name_key = item["name"].lower().strip()
+            if name_key not in seen_names:
+                seen_names.add(name_key)
+                results.append(item)
+    except Exception as exc:
+        logger.warning("Local food search error: %s", exc)
+
+    # Tier 2: Google Gemini AI (if key is configured and we want more variations)
+    client = _get_client()
+    if client is not None and len(results) < 4:
+        try:
+            gemini_items = _search_gemini_fallback(q)
+            for item in gemini_items:
+                name_key = item["name"].lower().strip()
+                if name_key not in seen_names:
+                    seen_names.add(name_key)
+                    results.append(item)
+        except Exception as exc:
+            logger.debug("Gemini food search skipped: %s", exc)
+
+    # Tier 3: Open Food Facts (for packaged products if online)
+    if len(results) < page_size:
+        try:
+            off_items = _search_openfoodfacts(q, page_size=page_size)
+            for item in off_items:
+                name_key = item["name"].lower().strip()
+                if name_key not in seen_names:
+                    seen_names.add(name_key)
+                    results.append(item)
+        except Exception as exc:
+            logger.debug("Open Food Facts unavailable: %s", exc)
+
+    return results[:page_size]
 
 
 def _search_openfoodfacts(query: str, page_size: int = 6) -> list[dict]:
@@ -28,7 +76,7 @@ def _search_openfoodfacts(query: str, page_size: int = 6) -> list[dict]:
         "fields": _FIELDS,
         "sort_by": "unique_scans_n",
     }
-    resp = requests.get(_SEARCH_URL, params=params, headers=_HEADERS, timeout=4)
+    resp = requests.get(_OPENFOODFACTS_URL, params=params, headers=_HEADERS, timeout=3)
     resp.raise_for_status()
     data = resp.json()
 
@@ -44,7 +92,7 @@ def _search_openfoodfacts(query: str, page_size: int = 6) -> list[dict]:
 
         results.append({
             "name": name,
-            "brand": (product.get("brands") or "").split(",")[0].strip(),
+            "brand": (product.get("brands") or "").split(",")[0].strip() or "Packaged Food",
             "serving_size": product.get("serving_size") or "100g",
             "calories_per_100g": round(float(cal or 0), 1),
             "protein_per_100g": round(float(n.get("proteins_100g", 0) or 0), 1),
@@ -59,12 +107,11 @@ def _search_gemini_fallback(query: str) -> list[dict]:
     if not client:
         return []
 
-    prompt = f"""You are a nutrition database. Provide standard nutritional info per 100g for food/product matching: "{query}".
-Return ONLY a valid JSON list of up to 4 popular matching items or brand variations.
-Format:
+    prompt = f"""You are a nutrition database. Provide standard nutritional info per 100g for food matching: "{query}".
+Return ONLY a valid JSON list of up to 3 popular items:
 [
   {{
-    "name": "Specific Food Name",
+    "name": "Food Name",
     "brand": "Brand or Category",
     "calories_per_100g": 120,
     "protein_per_100g": 5,
@@ -104,50 +151,12 @@ All numbers must be plain numbers per 100g (no units). Return only JSON."""
             })
         return results
     except Exception as exc:
-        logger.error("Gemini food search failed: %s", exc)
+        logger.debug("Gemini food search failed: %s", exc)
         return []
-
-
-def _search_local_db(query: str) -> list[dict]:
-    q = query.lower().strip()
-    matches = []
-    for k, v in _MOCK_DB.items():
-        if q in k or k in q:
-            matches.append({
-                "name": k.capitalize(),
-                "brand": "Whole Food",
-                "serving_size": "100g",
-                "calories_per_100g": v["calories"],
-                "protein_per_100g": v["protein"],
-                "carbs_per_100g": v["carbs"],
-                "fats_per_100g": v["fats"],
-            })
-    return matches
-
-
-def search_food(query: str, page_size: int = 6) -> list[dict]:
-    if not query or len(query.strip()) < 2:
-        return []
-
-    # 1. Try Open Food Facts
-    try:
-        results = _search_openfoodfacts(query, page_size)
-        if results:
-            return results
-    except Exception as exc:
-        logger.warning("Open Food Facts unavailable (%s) — falling back to Gemini AI.", exc)
-
-    # 2. Try Gemini AI Nutrition Database
-    gemini_results = _search_gemini_fallback(query)
-    if gemini_results:
-        return gemini_results
-
-    # 3. Try Local Common Foods Database
-    return _search_local_db(query)
 
 
 def calculate_serving(food: dict, grams: float) -> dict:
-    factor = grams / 100
+    factor = grams / 100.0
     return {
         "calories": round(food.get("calories_per_100g", 0) * factor, 1),
         "protein": round(food.get("protein_per_100g", 0) * factor, 1),

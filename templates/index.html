@@ -857,6 +857,16 @@
                class="w-full bg-[#242424] border border-white/5 rounded-full px-4 py-3
                       text-white font-bold focus:outline-none focus:ring-2 focus:ring-[#fb7185]"/>
       </div>
+      <div class="pt-2 border-t border-white/5">
+        <label class="text-xs font-bold text-[#b3b3b3] uppercase tracking-wider block mb-1.5 flex items-center justify-between">
+          <span>Google Gemini API Key</span>
+          <span id="gemini-key-tag" class="text-[10px] text-[#1DB954] font-extrabold uppercase">Free Key</span>
+        </label>
+        <input id="set-api-key" type="password" placeholder="AIzaSy... (free at aistudio.google.com)"
+               class="w-full bg-[#242424] border border-white/5 rounded-full px-4 py-3
+                      text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[#1DB954]"/>
+        <p class="text-[10px] text-[#6a6a6a] mt-1 ml-2">Paste here to unlock instant AI photo recognition.</p>
+      </div>
     </div>
     <div class="flex gap-3 mt-7">
       <button id="save-settings"
@@ -1111,7 +1121,11 @@ async function analysePhoto() {
     $('ar-fats').value = m.fats;
 
     if (m.notes) {
-      $('ar-notes').textContent = '📝 ' + m.notes;
+      if (m.notes.toLowerCase().includes('api key') || m.notes.toLowerCase().includes('settings')) {
+        $('ar-notes').innerHTML = `📝 ${m.notes} <button type="button" onclick="$('settings-modal').classList.remove('hidden')" class="block mt-2 text-xs font-bold text-[#1DB954] hover:underline">⚙️ Open Settings to Add Gemini API Key</button>`;
+      } else {
+        $('ar-notes').textContent = '📝 ' + m.notes;
+      }
       $('ar-notes').classList.remove('hidden');
     } else {
       $('ar-notes').classList.add('hidden');
@@ -1531,6 +1545,14 @@ $('settings-btn').addEventListener('click', async () => {
     $('set-protein').value = json.data.protein;
     $('set-carbs').value = json.data.carbs;
     $('set-fats').value = json.data.fats;
+    $('set-api-key').value = json.data.gemini_api_key || '';
+    if (json.data.has_gemini_key) {
+      $('gemini-key-tag').textContent = '✓ Configured';
+      $('gemini-key-tag').className = 'text-[10px] text-[#1DB954] font-extrabold uppercase';
+    } else {
+      $('gemini-key-tag').textContent = 'Not Set';
+      $('gemini-key-tag').className = 'text-[10px] text-[#fbbf24] font-extrabold uppercase';
+    }
   }
   $('settings-modal').classList.remove('hidden');
 });
@@ -1545,6 +1567,7 @@ $('save-settings').addEventListener('click', async () => {
     protein: +$('set-protein').value,
     carbs: +$('set-carbs').value,
     fats: +$('set-fats').value,
+    gemini_api_key: $('set-api-key').value.trim(),
   };
   const res = await fetch('/api/settings', {
     method: 'PUT',

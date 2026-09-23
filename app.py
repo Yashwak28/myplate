@@ -224,12 +224,17 @@ def api_calculate_tdee():
 def api_get_settings():
     try:
         user = db.get_user()
+        active_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        db_key = user.get("gemini_api_key", "").strip() if user else ""
+        has_key = bool((active_key and "your" not in active_key.lower()) or (db_key and "your" not in db_key.lower()))
         return _ok({
-            "name":     user.get("name", "Friend"),
-            "calories": user.get("calorie_goal", 2000),
-            "protein":  user.get("protein_goal", 150),
-            "carbs":    user.get("carb_goal",    250),
-            "fats":     user.get("fat_goal",      65),
+            "name":            user.get("name", "Friend"),
+            "calories":        user.get("calorie_goal", 2000),
+            "protein":         user.get("protein_goal", 150),
+            "carbs":           user.get("carb_goal",    250),
+            "fats":            user.get("fat_goal",      65),
+            "has_gemini_key":  has_key,
+            "gemini_api_key":  db_key or (active_key if "your" not in active_key.lower() else ""),
         })
     except Exception as e:
         return _err(str(e), 500)
@@ -239,14 +244,25 @@ def api_get_settings():
 def api_update_settings():
     body = request.get_json(silent=True) or {}
     try:
+        key = body.get("gemini_api_key")
+        if key is not None:
+            clean_key = str(key).strip()
+            if "your" not in clean_key.lower() and "api-key" not in clean_key.lower():
+                os.environ["GEMINI_API_KEY"] = clean_key
+            else:
+                clean_key = ""
+        else:
+            clean_key = None
+
         db.update_user_goals(
             user_id=1,
             calorie_goal=float(body.get("calories", 2000)),
             protein_goal=float(body.get("protein",  150)),
             carb_goal=float(body.get("carbs",       250)),
             fat_goal=float(body.get("fats",          65)),
+            gemini_api_key=clean_key,
         )
-        return _ok({"message": "Goals updated."})
+        return _ok({"message": "Settings updated."})
     except Exception as e:
         return _err(str(e), 500)
 

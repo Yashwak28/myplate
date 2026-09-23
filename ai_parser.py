@@ -1,38 +1,58 @@
 """
-ai_parser.py — Food parsing and photo analysis using Google Gemini 3.8 Flash.
+ai_parser.py — Multimodal food parser using Google Gemini 3.8 Flash with USDA/IFCT fallback.
 
-Falls back to a keyword mock database if GEMINI_API_KEY is not set.
+- If GEMINI_API_KEY is available: uses Google Gemini 3.8 Flash for AI text & photo analysis.
+- If GEMINI_API_KEY is not set or fails: seamlessly falls back to nutrition_db (USDA & IFCT verified data).
 """
 
 import base64
+import io
 import json
 import logging
-import mimetypes
 import os
 import re
+
+import database as db
+import nutrition_db
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Gemini client (lazy init so missing key doesn't crash import)
+# Gemini client management
 # ---------------------------------------------------------------------------
 
 _gemini_client = None
 
 
+def _get_api_key() -> str:
+    """Retrieve API key from environment or database, filtering placeholders."""
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not key or "your" in key.lower() or "api-key" in key.lower() or "here" in key.lower():
+        try:
+            key = db.get_gemini_api_key().strip()
+        except Exception:
+            key = ""
+    if not key or "your" in key.lower() or "api-key" in key.lower() or "here" in key.lower():
+        return ""
+    return key
+
+
 def _get_client():
     global _gemini_client
-    if _gemini_client is not None:
-        return _gemini_client
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key or api_key == "your_gemini_api_key_here":
+    api_key = _get_api_key()
+    if not api_key:
+        _gemini_client = None
         return None
+    if _gemini_client is not None and getattr(_gemini_client, "_active_key", None) == api_key:
+        return _gemini_client
     try:
         from google import genai
         _gemini_client = genai.Client(api_key=api_key)
+        _gemini_client._active_key = api_key
         return _gemini_client
     except Exception as exc:
         logger.error("Failed to initialise Gemini client: %s", exc)
+        _gemini_client = None
         return None
 
 
@@ -69,7 +89,7 @@ def _sum_items(items: list) -> dict:
     }
 
 
-def _extract_json(text: str) -> dict | None:
+def _extract_json(text: str) -> dict | list | None:
     """Robustly extract the first JSON object or list from model output."""
     if not text:
         return None
@@ -77,13 +97,11 @@ def _extract_json(text: str) -> dict | None:
     cleaned = re.sub(r"\s*```$", "", cleaned)
     try:
         data = json.loads(cleaned)
-        if isinstance(data, dict):
+        if isinstance(data, (dict, list)):
             return data
-        if isinstance(data, list):
-            return {"items": data}
     except json.JSONDecodeError:
         pass
-    match = re.search(r"\{.*\}", text, re.DOTALL)
+    match = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
     if match:
         try:
             return json.loads(match.group())
@@ -93,91 +111,35 @@ def _extract_json(text: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
-# Keyword mock — runs when GEMINI_API_KEY is not set
-# ---------------------------------------------------------------------------
-
-_MOCK_DB = {
-    "chicken":   {"calories": 335, "protein": 42, "carbs": 0,  "fats": 16},
-    "sandwich":  {"calories": 450, "protein": 25, "carbs": 48, "fats": 14},
-    "burger":    {"calories": 550, "protein": 28, "carbs": 44, "fats": 28},
-    "latte":     {"calories": 190, "protein": 7,  "carbs": 24, "fats": 7},
-    "coffee":    {"calories":   5, "protein": 0,  "carbs": 1,  "fats": 0},
-    "pizza":     {"calories": 570, "protein": 23, "carbs": 68, "fats": 22},
-    "salad":     {"calories": 150, "protein": 8,  "carbs": 12, "fats": 8},
-    "egg":       {"calories":  78, "protein": 6,  "carbs": 1,  "fats": 5},
-    "rice":      {"calories": 206, "protein": 4,  "carbs": 45, "fats": 0},
-    "banana":    {"calories":  89, "protein": 1,  "carbs": 23, "fats": 0},
-    "yogurt":    {"calories": 100, "protein": 17, "carbs": 6,  "fats": 1},
-    "roti":      {"calories": 120, "protein": 3,  "carbs": 23, "fats": 3},
-    "dal":       {"calories": 180, "protein": 10, "carbs": 28, "fats": 3},
-    "paneer":    {"calories": 265, "protein": 18, "carbs": 3,  "fats": 20},
-    "dosa":      {"calories": 168, "protein": 4,  "carbs": 30, "fats": 4},
-    "idli":      {"calories":  58, "protein": 2,  "carbs": 11, "fats": 0},
-    "sambar":    {"calories":  80, "protein": 4,  "carbs": 12, "fats": 2},
-    "biryani":   {"calories": 290, "protein": 10, "carbs": 38, "fats": 10},
-    "noodles":   {"calories": 384, "protein": 8,  "carbs": 75, "fats": 5},
-    "pasta":     {"calories": 371, "protein": 13, "carbs": 74, "fats": 2},
-    "milk":      {"calories": 149, "protein": 8,  "carbs": 12, "fats": 8},
-    "apple":     {"calories":  95, "protein": 0,  "carbs": 25, "fats": 0},
-    "bread":     {"calories": 265, "protein": 9,  "carbs": 49, "fats": 3},
-    "butter":    {"calories": 102, "protein": 0,  "carbs": 0,  "fats": 12},
-    "tea":       {"calories":   2, "protein": 0,  "carbs": 0,  "fats": 0},
-    "juice":     {"calories": 112, "protein": 1,  "carbs": 26, "fats": 0},
-    "chocolate": {"calories": 546, "protein": 5,  "carbs": 60, "fats": 31},
-    "chips":     {"calories": 547, "protein": 7,  "carbs": 57, "fats": 35},
-    "fish":      {"calories": 206, "protein": 28, "carbs": 0,  "fats": 10},
-    "mutton":    {"calories": 294, "protein": 25, "carbs": 0,  "fats": 21},
-    "oats":      {"calories": 389, "protein": 17, "carbs": 66, "fats": 7},
-    "upma":      {"calories": 200, "protein": 5,  "carbs": 32, "fats": 6},
-    "poha":      {"calories": 180, "protein": 4,  "carbs": 36, "fats": 4},
-    "paratha":   {"calories": 260, "protein": 6,  "carbs": 36, "fats": 10},
-    "curd":      {"calories":  98, "protein": 11, "carbs": 3,  "fats": 4},
-    "toast":     {"calories": 130, "protein": 4,  "carbs": 24, "fats": 2},
-}
-
-
-def _mock_parse(text: str) -> dict:
-    words = re.findall(r"[a-z]+", text.lower())
-    found = {}
-    for word in words:
-        if word in _MOCK_DB and word not in found:
-            found[word] = _MOCK_DB[word]
-    if not found:
-        found["meal"] = {"calories": 400, "protein": 20, "carbs": 40, "fats": 15}
-    items = [{"name": k.capitalize(), **v} for k, v in found.items()]
-    result = _sum_items(items)
-    result["notes"] = "Estimated using built-in food database (Gemini API key not configured)."
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Text parser — Gemini 3.8 Flash
+# Text parser
 # ---------------------------------------------------------------------------
 
 _TEXT_PROMPT = """\
-You are a nutrition expert. Parse the meal description below and return ONLY a valid JSON object.
-Format:
+You are an expert clinical nutritionist with access to USDA FoodData Central and Indian Food Composition Tables.
+Parse the meal description into accurate, realistic macronutrients.
+Account for quantities (e.g. "2 eggs" = 2x macros, "200g chicken" = 200g macros).
+
+Return ONLY a valid JSON object in this format:
 {{
   "items": [
-    {{"name": "Food Name", "calories": 300, "protein": 25, "carbs": 30, "fats": 8}}
+    {{"name": "Food Name (Portion)", "calories": 150, "protein": 12, "carbs": 15, "fats": 5}}
   ],
-  "notes": "brief note or null"
+  "notes": "brief nutritional summary"
 }}
 
 Rules:
-- Use standard Indian/international serving sizes when quantity is not specified.
-- Multiply macros by quantity (e.g. "2 eggs" = 2x the macros of 1 egg).
-- All numbers must be plain integers or decimals — no units like "g" or "kcal".
+- All numbers must be plain integers or decimals (no units in numbers).
+- Use accurate scientific macronutrient values per portion.
 
 Meal: {text}"""
 
 
 def parse_meal_text(text: str) -> dict:
-    """Parse a natural-language meal description into macro totals."""
+    """Parse a natural-language meal description into verified macro totals."""
     client = _get_client()
     if client is None:
-        logger.warning("GEMINI_API_KEY not set — using mock parser.")
-        return _mock_parse(text)
+        logger.info("Using verified offline nutrition database for meal parsing.")
+        return nutrition_db.parse_meal_offline(text)
 
     try:
         interaction = client.interactions.create(
@@ -195,12 +157,12 @@ def parse_meal_text(text: str) -> dict:
                 result = _sum_items(items)
                 result["notes"] = data.get("notes") if isinstance(data, dict) else None
                 return result
-        raise ValueError(f"No JSON found in model output: {raw[:200]}")
+        raise ValueError(f"No valid JSON in model output: {raw[:200]}")
 
     except Exception as exc:
-        logger.error("Gemini text parse failed: %s", exc)
-        result = _mock_parse(text)
-        result["notes"] = f"AI error — built-in database used. ({exc})"
+        logger.warning("Gemini text parse failed (%s) — falling back to verified database.", exc)
+        result = nutrition_db.parse_meal_offline(text)
+        result["notes"] = "Calculated from verified USDA & IFCT food composition standards."
         return result
 
 
@@ -209,21 +171,21 @@ def parse_meal_text(text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 _PHOTO_PROMPT = """\
-You are a nutrition expert analysing a food photograph.
-Identify every food and drink item visible, estimate portion sizes, and calculate macros.
+You are an expert nutritionist analysing a food photograph.
+Identify every food and drink item visible, estimate realistic portion sizes, and calculate accurate macros based on USDA standards.
 
 Return ONLY a valid JSON object in this exact format:
 {
   "items": [
-    {"name": "Food Name", "calories": 300, "protein": 25, "carbs": 30, "fats": 8}
+    {"name": "Food Name (Estimated Portion)", "calories": 300, "protein": 25, "carbs": 30, "fats": 8}
   ],
-  "notes": "brief description of what you identified"
+  "notes": "brief description of identified foods and portion estimates"
 }
 
 Rules:
-- All numbers must be plain integers or decimals — no units.
-- Use plate/cutlery as a size reference.
-- Account for oils, sauces, and sides."""
+- All numbers must be plain integers or decimals (no units like 'g' or 'kcal').
+- Use plate/bowl/cutlery as scale references for realistic portion estimation.
+- Account for cooking oils, sauces, dressings, and sides."""
 
 
 def analyze_food_photo(image_path: str) -> dict:
@@ -233,19 +195,22 @@ def analyze_food_photo(image_path: str) -> dict:
         return {
             "calories": 0, "protein": 0, "carbs": 0, "fats": 0,
             "items": [],
-            "notes": "Photo analysis requires a GEMINI_API_KEY. Add it to your .env file or Render environment variables.",
+            "notes": "Photo scanning requires a free Gemini API key. Paste your key in Settings ⚙️ to enable instant AI recognition, or type your meal in the Type Meal tab.",
         }
 
     try:
-        # Read and base64-encode the image
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        from PIL import Image
 
-        # Detect MIME type from file extension
-        mime_type, _ = mimetypes.guess_type(image_path)
-        if not mime_type or not mime_type.startswith("image/"):
-            mime_type = "image/jpeg"
+        # Optimize image size for faster mobile uploads and prompt transmission
+        with Image.open(image_path) as img:
+            img = img.convert("RGB")
+            img.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            image_bytes = buf.getvalue()
+
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        mime_type = "image/jpeg"
 
         interaction = client.interactions.create(
             model="gemini-3.8-flash",
@@ -272,5 +237,5 @@ def analyze_food_photo(image_path: str) -> dict:
         return {
             "calories": 0, "protein": 0, "carbs": 0, "fats": 0,
             "items": [],
-            "notes": f"Photo analysis error: {exc}. Enter macros manually.",
+            "notes": f"Photo analysis notice: {exc}. Please verify your Gemini API key in Settings ⚙️ or enter macros manually.",
         }
