@@ -25,7 +25,7 @@ _gemini_client = None
 
 
 def _get_api_key() -> str:
-    """Retrieve API key from environment or database, filtering placeholders."""
+    """Retrieve API key from environment or database, strictly validating format."""
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key or "your" in key.lower() or "api-key" in key.lower() or "here" in key.lower():
         try:
@@ -33,6 +33,10 @@ def _get_api_key() -> str:
         except Exception:
             key = ""
     if not key or "your" in key.lower() or "api-key" in key.lower() or "here" in key.lower():
+        return ""
+    # Gemini API keys created in Google AI Studio start with 'AIzaSy' and are 39 chars long
+    if not key.startswith("AIzaSy") or len(key) < 30:
+        logger.warning("Rejecting invalid Gemini key format (must start with AIzaSy). Falling back to offline DB.")
         return ""
     return key
 
@@ -47,7 +51,8 @@ def _get_client():
         return _gemini_client
     try:
         from google import genai
-        _gemini_client = genai.Client(api_key=api_key)
+        # 15s timeout prevents worker hangs on bad network or rate limits
+        _gemini_client = genai.Client(api_key=api_key, http_options={"timeout": 15000})
         _gemini_client._active_key = api_key
         return _gemini_client
     except Exception as exc:
@@ -142,12 +147,11 @@ def parse_meal_text(text: str) -> dict:
         return nutrition_db.parse_meal_offline(text)
 
     try:
-        interaction = client.interactions.create(
-            model="gemini-3.8-flash",
-            input=_TEXT_PROMPT.format(text=text),
-            store=False,
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=_TEXT_PROMPT.format(text=text),
         )
-        raw = interaction.output_text or ""
+        raw = response.text or ""
         data = _extract_json(raw)
         if data:
             items = data.get("items") if isinstance(data, dict) else None
@@ -167,7 +171,7 @@ def parse_meal_text(text: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Photo analyser — Gemini 3.8 Flash (multimodal)
+# Photo analyser — Gemini 2.5 Flash (multimodal)
 # ---------------------------------------------------------------------------
 
 _PHOTO_PROMPT = """\
@@ -195,32 +199,29 @@ def analyze_food_photo(image_path: str) -> dict:
         return {
             "calories": 0, "protein": 0, "carbs": 0, "fats": 0,
             "items": [],
-            "notes": "Photo scanning requires a free Gemini API key. Paste your key in Settings ⚙️ to enable instant AI recognition, or type your meal in the Type Meal tab.",
+            "notes": "Photo scanning requires a free Gemini API key (starts with AIzaSy). Enter your key in Settings ⚙️ to enable instant AI recognition, or type your meal in the Type Meal tab.",
         }
 
     try:
         from PIL import Image
+        from google.genai import types
 
         # Optimize image size for faster mobile uploads and prompt transmission
         with Image.open(image_path) as img:
             img = img.convert("RGB")
-            img.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
+            img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
             buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=85)
+            img.save(buf, format="JPEG", quality=80)
             image_bytes = buf.getvalue()
 
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
-        mime_type = "image/jpeg"
-
-        interaction = client.interactions.create(
-            model="gemini-3.8-flash",
-            input=[
-                {"type": "text",  "text": _PHOTO_PROMPT},
-                {"type": "image", "data": b64, "mime_type": mime_type},
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                _PHOTO_PROMPT,
+                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
             ],
-            store=False,
         )
-        raw = interaction.output_text or ""
+        raw = response.text or ""
         data = _extract_json(raw)
         if data:
             items = data.get("items") if isinstance(data, dict) else None
@@ -237,5 +238,5 @@ def analyze_food_photo(image_path: str) -> dict:
         return {
             "calories": 0, "protein": 0, "carbs": 0, "fats": 0,
             "items": [],
-            "notes": f"Photo analysis notice: {exc}. Please verify your Gemini API key in Settings ⚙️ or enter macros manually.",
+            "notes": f"Photo analysis notice: {exc}. Please verify your Gemini API key in Settings ⚙️ (starts with AIzaSy) or enter meal in Type Meal tab.",
         }

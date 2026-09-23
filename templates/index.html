@@ -562,7 +562,7 @@
         <label class="block text-xs font-bold uppercase tracking-wider text-[#b3b3b3] mb-2">Search Food or Product</label>
         <div class="relative">
           <input id="search-input" type="text"
-                 placeholder="e.g. Amul Butter, Greek Yogurt, Banana, Oats…"
+                 placeholder="e.g. Amul Ice Cream, Butter, Sandwich, Eggs…"
                  class="w-full bg-[#242424] border border-white/5 rounded-full px-5 py-3.5
                         text-white placeholder-[#6a6a6a] font-medium focus:outline-none
                         focus:ring-2 focus:ring-[#1DB954] pl-12 transition"/>
@@ -574,7 +574,20 @@
             </svg>
           </div>
         </div>
-        <p class="text-[11px] text-[#6a6a6a] mt-1.5 ml-2">Open Food Facts live catalog</p>
+
+        <!-- Quick Suggestions Chips -->
+        <div class="flex flex-wrap items-center gap-1.5 mt-2.5">
+          <span class="text-[10px] uppercase font-bold text-[#6a6a6a] mr-1">Quick:</span>
+          <button type="button" onclick="quickSearch('Amul')" class="text-[11px] font-semibold bg-[#242424] hover:bg-[#333] text-[#b3b3b3] hover:text-white px-3 py-1 rounded-full border border-white/5 transition">🥛 Amul</button>
+          <button type="button" onclick="quickSearch('Ice Cream')" class="text-[11px] font-semibold bg-[#242424] hover:bg-[#333] text-[#b3b3b3] hover:text-white px-3 py-1 rounded-full border border-white/5 transition">🍦 Ice Cream</button>
+          <button type="button" onclick="quickSearch('Sandwich')" class="text-[11px] font-semibold bg-[#242424] hover:bg-[#333] text-[#b3b3b3] hover:text-white px-3 py-1 rounded-full border border-white/5 transition">🥪 Sandwich</button>
+          <button type="button" onclick="quickSearch('Egg')" class="text-[11px] font-semibold bg-[#242424] hover:bg-[#333] text-[#b3b3b3] hover:text-white px-3 py-1 rounded-full border border-white/5 transition">🥚 Eggs</button>
+          <button type="button" onclick="quickSearch('Chicken')" class="text-[11px] font-semibold bg-[#242424] hover:bg-[#333] text-[#b3b3b3] hover:text-white px-3 py-1 rounded-full border border-white/5 transition">🍗 Chicken</button>
+          <button type="button" onclick="quickSearch('Rice')" class="text-[11px] font-semibold bg-[#242424] hover:bg-[#333] text-[#b3b3b3] hover:text-white px-3 py-1 rounded-full border border-white/5 transition">🍚 Rice</button>
+          <button type="button" onclick="quickSearch('Paneer')" class="text-[11px] font-semibold bg-[#242424] hover:bg-[#333] text-[#b3b3b3] hover:text-white px-3 py-1 rounded-full border border-white/5 transition">🧀 Paneer</button>
+        </div>
+
+        <p class="text-[11px] text-[#6a6a6a] mt-2 ml-1">Verified USDA & IFCT Nutrition Database · Instant Suggestions</p>
 
         <!-- Search Results List -->
         <div id="search-results" class="mt-4 space-y-2"></div>
@@ -1060,6 +1073,10 @@ function switchTab(tab) {
     $(`content-${t}`).classList.toggle('hidden', t !== tab);
     $(`tab-${t}`).classList.toggle('active', t === tab);
   });
+  if (tab === 'search') {
+    const q = $('search-input').value.trim();
+    doSearch(q);
+  }
 }
 
 // ── PHOTO TAB ─────────────────────────────────────────────────────
@@ -1109,6 +1126,18 @@ async function analysePhoto() {
 
   try {
     const res = await fetch('/api/analyze_photo', { method: 'POST', body: form });
+    if (!res.ok) {
+      let errorMsg = `Server error (${res.status})`;
+      try {
+        const errJson = await res.json();
+        if (errJson.error) errorMsg = errJson.error;
+      } catch (_) {
+        if (res.status === 502 || res.status === 504) {
+          errorMsg = 'AI analysis timed out. Please enter meal in Type Meal tab or verify your Gemini API key in Settings.';
+        }
+      }
+      throw new Error(errorMsg);
+    }
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Photo analysis failed');
 
@@ -1134,7 +1163,7 @@ async function analysePhoto() {
     $('analysing-state').classList.add('hidden');
     $('analyse-result').classList.remove('hidden');
   } catch (err) {
-    alert('Error: ' + err.message);
+    alert('Notice: ' + err.message);
     $('analysing-state').classList.add('hidden');
     $('photo-result-pending').classList.remove('hidden');
   }
@@ -1204,44 +1233,75 @@ function showTextMsg(txt, cls) {
 }
 
 // ── SEARCH TAB ────────────────────────────────────────────────────
+function quickSearch(term) {
+  $('search-input').value = term;
+  doSearch(term);
+}
+
 $('search-input').addEventListener('input', e => {
   clearTimeout(S.searchTimer);
   const q = e.target.value.trim();
   if (q.length < 2) {
-    $('search-results').innerHTML = '';
+    if (q.length === 0) {
+      doSearch('');
+    } else {
+      $('search-results').innerHTML = '';
+    }
     return;
   }
-  S.searchTimer = setTimeout(() => doSearch(q), 350);
+  S.searchTimer = setTimeout(() => doSearch(q), 250);
 });
 
 async function doSearch(query) {
   $('search-spinner').classList.remove('hidden');
   try {
-    const res = await fetch(`/api/search_food?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/search_food?q=${encodeURIComponent(query || '')}`);
+    if (!res.ok) return;
     const json = await res.json();
     if (!json.ok) return;
-    renderSearchResults(json.data.results);
+    const items = Array.isArray(json.data) ? json.data : (json.data?.results || []);
+    renderSearchResults(items, query);
+  } catch (err) {
+    console.error('Search request failed:', err);
   } finally {
     $('search-spinner').classList.add('hidden');
   }
 }
 
-function renderSearchResults(items) {
+function renderSearchResults(items, query = '') {
   const c = $('search-results');
   c.innerHTML = '';
+
+  const isSuggestion = !query || query.trim().length < 2;
+  if (isSuggestion) {
+    const head = document.createElement('div');
+    head.className = 'flex items-center justify-between pb-1';
+    head.innerHTML = `
+      <p class="text-xs font-bold text-[#b3b3b3] uppercase tracking-wider flex items-center gap-1.5">
+        <span class="text-[#1DB954]">🔥</span> Popular Foods & Suggestions
+      </p>
+      <span class="text-[10px] text-[#6a6a6a]">Tap any to select</span>
+    `;
+    c.appendChild(head);
+  }
+
   if (!items.length) {
-    c.innerHTML = '<p class="text-xs text-[#6a6a6a] text-center py-4">No matching foods found</p>';
+    c.innerHTML = '<p class="text-xs text-[#6a6a6a] text-center py-4">No matching foods found. Try another keyword!</p>';
     return;
   }
-  items.slice(0, 5).forEach(f => {
+
+  items.slice(0, 10).forEach(f => {
     const div = document.createElement('div');
-    div.className = 'p-3 bg-[#1e1e1e] hover:bg-[#282828] border border-white/5 rounded-2xl cursor-pointer transition flex items-center justify-between';
+    div.className = 'p-3.5 bg-[#1e1e1e] hover:bg-[#282828] border border-white/5 rounded-2xl cursor-pointer transition flex items-center justify-between gap-3';
     div.innerHTML = `
-      <div>
-        <p class="text-sm font-bold text-white">${f.name}</p>
-        <p class="text-xs text-[#b3b3b3]">${f.brand || 'Common food'} · ${f.calories_per_100g} kcal/100g</p>
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-bold text-white truncate">${f.name}</p>
+        <p class="text-xs text-[#b3b3b3] mt-0.5 truncate">
+          ${f.brand || 'Verified Food'} · <span class="text-[#1DB954] font-semibold">${f.calories_per_100g} kcal</span>/100g
+          <span class="text-[#777] ml-1">(${f.protein_per_100g}g P · ${f.carbs_per_100g}g C · ${f.fats_per_100g}g F)</span>
+        </p>
       </div>
-      <span class="text-xs font-bold text-[#1DB954] bg-[#1DB954]/10 px-3 py-1 rounded-full border border-[#1DB954]/20">+ Select</span>
+      <span class="text-xs font-bold text-[#1DB954] bg-[#1DB954]/10 hover:bg-[#1DB954]/25 px-3 py-1 rounded-full border border-[#1DB954]/25 shrink-0 transition">+ Select</span>
     `;
     div.onclick = () => selectFood(f);
     c.appendChild(div);
@@ -1562,12 +1622,18 @@ $('settings-btn').addEventListener('click', async () => {
 );
 
 $('save-settings').addEventListener('click', async () => {
+  const key = $('set-api-key').value.trim();
+  if (key && (!key.startsWith('AIzaSy') || key.length < 30)) {
+    alert('Invalid Google Gemini API Key.\n\nKeys created in Google AI Studio always start with "AIzaSy".\nGet your free key at: https://aistudio.google.com/app/apikey');
+    return;
+  }
+
   const body = {
     calories: +$('set-calories').value,
     protein: +$('set-protein').value,
     carbs: +$('set-carbs').value,
     fats: +$('set-fats').value,
-    gemini_api_key: $('set-api-key').value.trim(),
+    gemini_api_key: key,
   };
   const res = await fetch('/api/settings', {
     method: 'PUT',

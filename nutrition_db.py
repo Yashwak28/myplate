@@ -385,12 +385,75 @@ FOOD_DATABASE = [
         "aliases": ["greek yogurt", "greek yoghurt"],
     },
     {
-        "name": "Butter",
-        "brand": "Dairy",
-        "per_100g": {"cal": 717, "p": 0.9, "c": 0.1, "f": 81.0},
-        "unit_name": "1 tbsp (14g)",
-        "unit_weight_g": 14,  # ~100 kcal
-        "aliases": ["butter", "amul butter", "makhan"],
+        "name": "Amul Ice Cream (Vanilla / Chocolate)",
+        "brand": "Amul / Dairy Desserts",
+        "per_100g": {"cal": 207, "p": 3.8, "c": 24.0, "f": 10.7},
+        "unit_name": "1 scoop / cup (65g)",
+        "unit_weight_g": 65,
+        "aliases": [
+            "amul ice cream", "ice cream", "amul icecream", "icecream",
+            "vanilla ice cream", "chocolate ice cream", "amul vanilla",
+            "amul chocolate", "ice-cream", "amul ice-cream"
+        ],
+    },
+    {
+        "name": "Amul Butter",
+        "brand": "Amul",
+        "per_100g": {"cal": 720, "p": 0.8, "c": 0.0, "f": 80.0},
+        "unit_name": "1 portion blister (10g)",
+        "unit_weight_g": 10,
+        "aliases": ["amul butter", "table butter", "salted butter", "butter", "makhan"],
+    },
+    {
+        "name": "Amul Cheese Slice",
+        "brand": "Amul",
+        "per_100g": {"cal": 320, "p": 20.0, "c": 2.0, "f": 26.0},
+        "unit_name": "1 slice (20g)",
+        "unit_weight_g": 20,
+        "aliases": [
+            "amul cheese", "amul cheese slice", "cheese slice", "cheese slices",
+            "cheese", "cheddar", "amul cheese cube", "cheese cube", "mozzarella"
+        ],
+    },
+    {
+        "name": "Amul Taaza Milk (Toned)",
+        "brand": "Amul",
+        "per_100g": {"cal": 58, "p": 3.0, "c": 4.7, "f": 3.0},
+        "unit_name": "1 glass / cup (200ml)",
+        "unit_weight_g": 200,
+        "aliases": ["amul taaza", "amul taaza milk", "taaza milk", "amul milk"],
+    },
+    {
+        "name": "Amul Gold Milk (Full Cream)",
+        "brand": "Amul",
+        "per_100g": {"cal": 88, "p": 3.5, "c": 5.0, "f": 6.0},
+        "unit_name": "1 glass / cup (200ml)",
+        "unit_weight_g": 200,
+        "aliases": ["amul gold", "amul gold milk", "gold milk", "amul full cream milk"],
+    },
+    {
+        "name": "Amul Fresh Paneer",
+        "brand": "Amul",
+        "per_100g": {"cal": 289, "p": 19.0, "c": 2.2, "f": 23.0},
+        "unit_name": "100g block",
+        "unit_weight_g": 100,
+        "aliases": ["amul paneer", "amul fresh paneer", "amul malai paneer"],
+    },
+    {
+        "name": "Amul Masti Dahi (Curd)",
+        "brand": "Amul",
+        "per_100g": {"cal": 62, "p": 3.7, "c": 4.8, "f": 3.1},
+        "unit_name": "1 cup (200g)",
+        "unit_weight_g": 200,
+        "aliases": ["amul dahi", "amul masti dahi", "amul curd", "masti dahi"],
+    },
+    {
+        "name": "Amul Kool / Flavoured Milk",
+        "brand": "Amul",
+        "per_100g": {"cal": 85, "p": 3.2, "c": 12.0, "f": 2.7},
+        "unit_name": "1 can / bottle (180ml)",
+        "unit_weight_g": 180,
+        "aliases": ["amul kool", "amul kool cafe", "kool cafe", "kool elaichi"],
     },
     {
         "name": "Ghee (Clarified Butter)",
@@ -399,14 +462,6 @@ FOOD_DATABASE = [
         "unit_name": "1 tsp (5g)",
         "unit_weight_g": 5,  # ~45 kcal
         "aliases": ["ghee", "clarified butter", "desi ghee"],
-    },
-    {
-        "name": "Cheese (Cheddar / Processed Slice)",
-        "brand": "Dairy",
-        "per_100g": {"cal": 380, "p": 21.0, "c": 2.5, "f": 31.0},
-        "unit_name": "1 slice (20g)",
-        "unit_weight_g": 20,  # ~76 kcal
-        "aliases": ["cheese", "cheese slice", "cheddar", "amul cheese", "mozzarella"],
     },
 
     # ── Fruits & Vegetables ──────────────────────────────────────
@@ -569,12 +624,60 @@ FOOD_DATABASE = [
         "aliases": ["burger", "burgers", "hamburger", "chicken burger", "veg burger"],
     },
     {
-        "name": "Sandwich (Veg & Cheese)",
-        "brand": "Fast Food",
-        "per_100g": {"cal": 220, "p": 7.5, "c": 26.0, "f": 9.5},
+        "name": "Veg Grilled Sandwich",
+        "brand": "Snacks & Sandwiches",
+        "per_100g": {"cal": 195, "p": 5.2, "c": 28.5, "f": 6.8},
         "unit_name": "1 sandwich (150g)",
-        "unit_weight_g": 150,  # ~330 kcal
-        "aliases": ["sandwich", "sandwiches", "grilled sandwich", "veg sandwich", "club sandwich"],
+        "unit_weight_g": 150,  # ~292 kcal
+        "aliases": ["veg sandwich", "vegetable sandwich", "veg grilled sandwich", "grilled sandwich", "sandwich", "sandwiches", "bombay sandwich"],
+    },
+    {
+        "name": "Grilled Cheese Sandwich",
+        "brand": "Snacks & Sandwiches",
+        "per_100g": {"cal": 280, "p": 11.5, "c": 26.0, "f": 14.5},
+        "unit_name": "1 sandwich (140g)",
+        "unit_weight_g": 140,  # ~392 kcal
+        "aliases": ["grilled cheese sandwich", "cheese sandwich", "grilled cheese", "cheese toast"],
+    },
+    {
+        "name": "Chicken Sandwich / Grilled Chicken Sandwich",
+        "brand": "Snacks & Sandwiches",
+        "per_100g": {"cal": 215, "p": 16.5, "c": 22.0, "f": 6.8},
+        "unit_name": "1 sandwich (160g)",
+        "unit_weight_g": 160,  # ~344 kcal, 26.4g protein
+        "aliases": ["chicken sandwich", "grilled chicken sandwich", "chicken breast sandwich", "club sandwich"],
+    },
+    {
+        "name": "Egg Mayo / Boiled Egg Sandwich",
+        "brand": "Snacks & Sandwiches",
+        "per_100g": {"cal": 225, "p": 10.5, "c": 22.0, "f": 10.5},
+        "unit_name": "1 sandwich (140g)",
+        "unit_weight_g": 140,  # ~315 kcal
+        "aliases": ["egg sandwich", "egg mayo sandwich", "boiled egg sandwich"],
+    },
+    {
+        "name": "Peanut Butter Sandwich",
+        "brand": "Snacks & Sandwiches",
+        "per_100g": {"cal": 360, "p": 14.0, "c": 38.0, "f": 17.0},
+        "unit_name": "1 sandwich (90g)",
+        "unit_weight_g": 90,  # ~324 kcal
+        "aliases": ["peanut butter sandwich", "pb sandwich", "peanut butter bread"],
+    },
+    {
+        "name": "Peanut Butter",
+        "brand": "Spreads & Nuts",
+        "per_100g": {"cal": 588, "p": 25.0, "c": 20.0, "f": 50.0},
+        "unit_name": "1 tbsp (16g)",
+        "unit_weight_g": 16,  # ~94 kcal, 4g protein
+        "aliases": ["peanut butter", "pb", "pintola peanut butter", "myfitness peanut butter"],
+    },
+    {
+        "name": "Maggi 2-Minute Noodles",
+        "brand": "Nestle Maggi",
+        "per_100g": {"cal": 427, "p": 8.0, "c": 63.5, "f": 15.7},
+        "unit_name": "1 single pack (70g)",
+        "unit_weight_g": 70,  # ~299 kcal
+        "aliases": ["maggi", "maggi noodles", "maggie", "noodles", "instant noodles"],
     },
     {
         "name": "French Fries",
@@ -612,31 +715,95 @@ _FOODS_BY_ALIAS_LEN = sorted(
 
 
 # ---------------------------------------------------------------------------
-# Search Engine (Local)
+# Search Engine & Suggestions (Local)
 # ---------------------------------------------------------------------------
 
-def search_local_foods(query: str, limit: int = 8) -> list[dict]:
-    """Search the curated nutrition database by food name or alias."""
-    q = query.lower().strip()
-    if not q or len(q) < 2:
-        return []
+def get_popular_suggestions(limit: int = 12) -> list[dict]:
+    """Return top curated staple foods and popular products for quick logging."""
+    popular_names = [
+        "Amul Ice Cream (Vanilla / Chocolate)",
+        "Amul Butter",
+        "Amul Cheese Slice",
+        "Amul Taaza Milk",
+        "Whole Boiled Egg",
+        "Chicken Breast (Cooked, Skinless)",
+        "Cooked White Rice / Basmati Rice",
+        "Roti / Chapati (Whole Wheat)",
+        "Veg Grilled Sandwich",
+        "Paneer (Cottage Cheese)",
+        "Greek Yogurt (Plain)",
+        "Banana",
+        "Peanut Butter",
+        "Oats / Oatmeal (Cooked)",
+        "Dal Tadka / Yellow Dal",
+        "Apple",
+    ]
+    results = []
+    seen = set()
+    for name in popular_names:
+        for f in FOOD_DATABASE:
+            if f["name"] == name or f["name"].startswith(name):
+                if f["name"] not in seen:
+                    seen.add(f["name"])
+                    results.append(_format_food_result(f))
+                break
+    return results[:limit]
 
+
+def search_local_foods(query: str, limit: int = 10) -> list[dict]:
+    """Search the curated nutrition database with multi-term token scoring."""
+    q = (query or "").lower().strip()
+    if not q or len(q) < 2:
+        return get_popular_suggestions(limit=limit)
+
+    words = [w for w in re.split(r"\s+", q) if w]
     results = []
     seen = set()
 
-    # Pass 1: exact word / starts with
+    # Priority 1: Exact alias or exact name match
     for f in FOOD_DATABASE:
         name_lower = f["name"].lower()
-        if any(a == q or a.startswith(q) for a in f["aliases"]) or name_lower.startswith(q):
+        if any(a == q for a in f["aliases"]) or name_lower == q:
             if f["name"] not in seen:
                 seen.add(f["name"])
                 results.append(_format_food_result(f))
 
-    # Pass 2: substring match
-    if len(results) < limit:
+    # Priority 2: Name or alias starts with query
+    for f in FOOD_DATABASE:
+        name_lower = f["name"].lower()
+        if any(a.startswith(q) for a in f["aliases"]) or name_lower.startswith(q):
+            if f["name"] not in seen:
+                seen.add(f["name"])
+                results.append(_format_food_result(f))
+
+    # Priority 3: Full query string is a substring of name, brand, or alias
+    for f in FOOD_DATABASE:
+        name_lower = f["name"].lower()
+        brand_lower = f.get("brand", "").lower()
+        target = f"{name_lower} {brand_lower} " + " ".join(f["aliases"])
+        if q in target:
+            if f["name"] not in seen:
+                seen.add(f["name"])
+                results.append(_format_food_result(f))
+
+    # Priority 4: All individual search words appear in name, brand, or aliases
+    if len(results) < limit and len(words) > 1:
         for f in FOOD_DATABASE:
             name_lower = f["name"].lower()
-            if any(q in a for a in f["aliases"]) or q in name_lower:
+            brand_lower = f.get("brand", "").lower()
+            target = f"{name_lower} {brand_lower} " + " ".join(f["aliases"])
+            if all(w in target for w in words):
+                if f["name"] not in seen:
+                    seen.add(f["name"])
+                    results.append(_format_food_result(f))
+
+    # Priority 5: Fallback if nothing matched yet: match any distinct whole word (>= 4 chars)
+    if not results:
+        for f in FOOD_DATABASE:
+            name_lower = f["name"].lower()
+            brand_lower = f.get("brand", "").lower()
+            target = f"{name_lower} {brand_lower} " + " ".join(f["aliases"])
+            if any(re.search(r"\b" + re.escape(w) + r"\b", target) for w in words if len(w) >= 4):
                 if f["name"] not in seen:
                     seen.add(f["name"])
                     results.append(_format_food_result(f))

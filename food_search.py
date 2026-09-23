@@ -18,11 +18,16 @@ _HEADERS = {"User-Agent": "MyPlate-Tracker/2.0 (contact@myplate.app)"}
 _FIELDS = "product_name,brands,serving_size,nutriments"
 
 
-def search_food(query: str, page_size: int = 8) -> list[dict]:
+def get_suggestions(limit: int = 12) -> list[dict]:
+    """Return top popular foods and product suggestions."""
+    return nutrition_db.get_popular_suggestions(limit=limit)
+
+
+def search_food(query: str, page_size: int = 10) -> list[dict]:
     """Search for food items with reliable multi-tier fallback."""
     q = (query or "").strip()
     if len(q) < 2:
-        return []
+        return get_suggestions(limit=page_size)
 
     results = []
     seen_names = set()
@@ -40,7 +45,7 @@ def search_food(query: str, page_size: int = 8) -> list[dict]:
 
     # Tier 2: Google Gemini AI (if key is configured and we want more variations)
     client = _get_client()
-    if client is not None and len(results) < 4:
+    if client is not None and len(results) < 3:
         try:
             gemini_items = _search_gemini_fallback(q)
             for item in gemini_items:
@@ -123,12 +128,11 @@ Return ONLY a valid JSON list of up to 3 popular items:
 All numbers must be plain numbers per 100g (no units). Return only JSON."""
 
     try:
-        interaction = client.interactions.create(
-            model="gemini-3.8-flash",
-            input=prompt,
-            store=False
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
         )
-        raw = interaction.output_text or ""
+        raw = response.text or ""
         data = _extract_json(raw)
         items = []
         if isinstance(data, list):

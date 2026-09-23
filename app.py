@@ -44,7 +44,7 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 
 import database as db
 from ai_parser import analyze_food_photo, parse_meal_text
-from food_search import calculate_serving, search_food
+from food_search import calculate_serving, get_suggestions, search_food
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -390,9 +390,9 @@ def api_analyze_photo():
 @app.route("/api/search_food")
 def api_search_food():
     query = (request.args.get("q") or "").strip()
-    if not query:
-        return _ok([])
     try:
+        if not query or len(query) < 2:
+            return _ok(get_suggestions())
         results = search_food(query)
         return _ok(results)
     except Exception as e:
