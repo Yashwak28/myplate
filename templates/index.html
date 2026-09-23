@@ -875,10 +875,10 @@
           <span>Google Gemini API Key</span>
           <span id="gemini-key-tag" class="text-[10px] text-[#1DB954] font-extrabold uppercase">Free Key</span>
         </label>
-        <input id="set-api-key" type="password" placeholder="AIzaSy... (free at aistudio.google.com)"
+        <input id="set-api-key" type="password" placeholder="Paste Gemini API key (AQ... or AIzaSy...)"
                class="w-full bg-[#242424] border border-white/5 rounded-full px-4 py-3
                       text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[#1DB954]"/>
-        <p class="text-[10px] text-[#6a6a6a] mt-1 ml-2">Paste here to unlock instant AI photo recognition.</p>
+        <p class="text-[10px] text-[#6a6a6a] mt-1 ml-2">Supports Google Gemini API keys (AQ... and AIzaSy...).</p>
       </div>
     </div>
     <div class="flex gap-3 mt-7">
@@ -1623,8 +1623,8 @@ $('settings-btn').addEventListener('click', async () => {
 
 $('save-settings').addEventListener('click', async () => {
   const key = $('set-api-key').value.trim();
-  if (key && (!key.startsWith('AIzaSy') || key.length < 30)) {
-    alert('Invalid Google Gemini API Key.\n\nKeys created in Google AI Studio always start with "AIzaSy".\nGet your free key at: https://aistudio.google.com/app/apikey');
+  if (key && key.length < 20) {
+    alert('Please enter a valid Google Gemini API Key.');
     return;
   }
 

@@ -129,7 +129,7 @@ All numbers must be plain numbers per 100g (no units). Return only JSON."""
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=prompt,
         )
         raw = response.text or ""

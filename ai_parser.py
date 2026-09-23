@@ -34,9 +34,8 @@ def _get_api_key() -> str:
             key = ""
     if not key or "your" in key.lower() or "api-key" in key.lower() or "here" in key.lower():
         return ""
-    # Gemini API keys created in Google AI Studio start with 'AIzaSy' and are 39 chars long
-    if not key.startswith("AIzaSy") or len(key) < 30:
-        logger.warning("Rejecting invalid Gemini key format (must start with AIzaSy). Falling back to offline DB.")
+    # Support both new Google Gemini keys (AQ...) and AI Studio keys (AIzaSy...)
+    if len(key) < 20:
         return ""
     return key
 
@@ -139,6 +138,9 @@ Rules:
 Meal: {text}"""
 
 
+_GEMINI_MODEL = "gemini-3.6-flash"
+
+
 def parse_meal_text(text: str) -> dict:
     """Parse a natural-language meal description into verified macro totals."""
     client = _get_client()
@@ -148,7 +150,7 @@ def parse_meal_text(text: str) -> dict:
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=_GEMINI_MODEL,
             contents=_TEXT_PROMPT.format(text=text),
         )
         raw = response.text or ""
@@ -171,7 +173,7 @@ def parse_meal_text(text: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Photo analyser — Gemini 2.5 Flash (multimodal)
+# Photo analyser — Gemini 3.6 Flash (multimodal)
 # ---------------------------------------------------------------------------
 
 _PHOTO_PROMPT = """\
@@ -199,7 +201,7 @@ def analyze_food_photo(image_path: str) -> dict:
         return {
             "calories": 0, "protein": 0, "carbs": 0, "fats": 0,
             "items": [],
-            "notes": "Photo scanning requires a free Gemini API key (starts with AIzaSy). Enter your key in Settings ⚙️ to enable instant AI recognition, or type your meal in the Type Meal tab.",
+            "notes": "Photo scanning requires a free Gemini API key. Enter your key in Settings ⚙️ to enable instant AI recognition, or type your meal in the Type Meal tab.",
         }
 
     try:
@@ -215,7 +217,7 @@ def analyze_food_photo(image_path: str) -> dict:
             image_bytes = buf.getvalue()
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=_GEMINI_MODEL,
             contents=[
                 _PHOTO_PROMPT,
                 types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
@@ -223,20 +225,21 @@ def analyze_food_photo(image_path: str) -> dict:
         )
         raw = response.text or ""
         data = _extract_json(raw)
-        if data:
-            items = data.get("items") if isinstance(data, dict) else None
-            if not items and isinstance(data, dict) and ("calories" in data or "name" in data):
+        if isinstance(data, dict):
+            items = data.get("items") or []
+            if not items and ("calories" in data or "name" in data):
                 items = [data]
-            if items:
-                result = _sum_items(items)
-                result["notes"] = data.get("notes") if isinstance(data, dict) else None
-                return result
-        raise ValueError(f"No JSON in model output: {raw[:200]}")
+            result = _sum_items(items)
+            result["notes"] = data.get("notes") or ("No food detected in image." if not items else None)
+            return result
+        elif isinstance(data, list):
+            return _sum_items(data)
+        raise ValueError(f"No valid JSON in model output: {raw[:200]}")
 
     except Exception as exc:
         logger.error("Gemini photo analysis failed: %s", exc)
         return {
             "calories": 0, "protein": 0, "carbs": 0, "fats": 0,
             "items": [],
-            "notes": f"Photo analysis notice: {exc}. Please verify your Gemini API key in Settings ⚙️ (starts with AIzaSy) or enter meal in Type Meal tab.",
+            "notes": f"Photo analysis notice: {exc}. Please verify your Gemini API key in Settings ⚙️ or enter meal in Type Meal tab.",
         }
